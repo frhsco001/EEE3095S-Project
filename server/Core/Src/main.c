@@ -11,7 +11,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "protocol.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,6 +46,7 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+uint8_t rx_byte;  // Single byte for incoming UART data
 
 /* USER CODE END 0 */
 
@@ -80,19 +81,43 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  Proto_Init(&huart1);
+  HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+  uint32_t last_rx_time = HAL_GetTick();
+  uint32_t now;
+
+  while (1) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    static const uint8_t message[] = "Welcome to Binary\r\n";
-    HAL_UART_Transmit(&huart1, (uint8_t *)message, sizeof(message) - 1, HAL_MAX_DELAY);
-    HAL_Delay(1000);
+    now = HAL_GetTick();
+    if (frame_ready) {
+      CommandStruct cmd;
+
+      if (Proto_ParseFrame(rx_buffer, &cmd)) {
+        if (cmd.type == CMD_CONNECT) {
+          Proto_SendResponse("OK");
+        }
+      } else {
+        Proto_SendResponse("NACK: BADCMD");
+      }
+
+      frame_ready = 0;
+      last_rx_time = now;
+    }
+
+    if (rx_index == 0) {
+      last_rx_time = now;
+    } 
+    else if (now - last_rx_time > FRAME_TIMEOUT) {
+      rx_index = 0;
+      last_rx_time = now; // Reset timer after clearing
+    }
   }
   /* USER CODE END 3 */
 }
@@ -194,7 +219,15 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART1) {
+        // Pass the received byte to your protocol buffer
+        Proto_ProcessByte(rx_byte);
 
+        // Re-arm the UART interrupt for the next byte
+        HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
+    }
+}
 /* USER CODE END 4 */
 
 /**

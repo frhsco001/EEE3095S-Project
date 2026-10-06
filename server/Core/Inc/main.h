@@ -41,7 +41,7 @@ extern "C" {
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
-
+#define FRAME_TIMEOUT 500
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
