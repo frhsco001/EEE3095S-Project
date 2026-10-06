@@ -1,0 +1,7 @@
+# Build output and artifacts
+build/
+
+# IDE specific files (STM32CubeIDE)
+.settings/
+*.launch
+.stm32env

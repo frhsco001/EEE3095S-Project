@@ -1,0 +1,11 @@
+{
+    "cortex-debug.armToolchainPath": "C:\\Program Files\\Arm\\GNU Toolchain mingw-w64-x86_64-arm-none-eabi\\bin",
+    "cortex-debug.openocdPath": "C:\\Users\\scott\\AppData\\Roaming\\xPacks\\@xpack-dev-tools\\openocd\\0.12.0-7.1\\.content\\bin\\openocd.exe",
+    "python-envs.pythonProjects": [
+        {
+            "path": ".",
+            "envManager": "ms-python.python:venv",
+            "packageManager": "ms-python.python:pip"
+        }
+    ]
+}

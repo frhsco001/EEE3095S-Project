@@ -1,0 +1,24 @@
+{
+    "folders": [
+        {
+            "name": "STM32 Server",
+            "path": "server"
+        },
+        {
+            "name": "GUI Client",
+            "path": "client"
+        },
+        {
+            "name": "Project Root",
+            "path": "."
+        }
+    ],
+    "settings": {
+        "files.exclude": {
+            "server/": true,
+            "client/": true
+        },
+        "cortex-debug.armToolchainPath": "C:\\Program Files\\Arm\\GNU Toolchain mingw-w64-x86_64-arm-none-eabi\\bin",
+        "cortex-debug.openocdPath": "C:\\Users\\scott\\AppData\\Roaming\\xPacks\\@xpack-dev-tools\\openocd\\0.12.0-7.1\\.content\\bin\\openocd.exe"
+    }
+}

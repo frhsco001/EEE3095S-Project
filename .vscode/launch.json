@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run GUI Client",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "client",
+      "cwd": "${workspaceFolder:GUI Client}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder:GUI Client}/src"
+      },
+      "console": "integratedTerminal"
+    }
+  ]
+}

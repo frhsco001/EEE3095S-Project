@@ -1,0 +1,24 @@
+[project]
+name = "client"
+version = "0.1.0"
+description = "A PyQt6 GUI client and automated pytest test harness for a STM32 Battleship serial game server."
+authors = [
+    { name = "Scott Faurholm", email = "frhsco001@myuct.ac.za" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "pyqt6>=6.11.0",
+    "pyserial>=3.5",
+]
+
+[project.scripts]
+client = "client:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
