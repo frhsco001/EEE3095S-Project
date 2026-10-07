@@ -12,6 +12,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "protocol.h"
+#include "battleship.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -100,9 +101,7 @@ int main(void)
       CommandStruct cmd;
 
       if (Proto_ParseFrame(rx_buffer, &cmd)) {
-        if (cmd.type == CMD_CONNECT) {
-          Proto_SendResponse("OK");
-        }
+        Game_ProcessCommand(&cmd);
       } else {
         Proto_SendResponse("NACK: BADCMD");
       }
