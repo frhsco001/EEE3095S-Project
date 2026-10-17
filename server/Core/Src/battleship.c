@@ -35,6 +35,14 @@ void Game_ClearBoards() {
     }
 }
 
+/**
+ * @brief Formats and transmits a standard cell response over UART without snprintf.
+ *
+ * @param[in] prefix  Null-terminated prefix string (e.g., "HIT: " or "MISS: ").
+ * @param[in] player  Target player identifier (1 or 2).
+ * @param[in] x       Column index (0-9).
+ * @param[in] y       Row index (0-9).
+ */
 static void Proto_SendCellResponse(const char* prefix, uint8_t player, uint8_t x, uint8_t y) {
     char msg[16];
     uint8_t len = 0;
