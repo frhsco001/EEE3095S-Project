@@ -19,7 +19,7 @@ typedef enum {
     CMD_NEW_PVP,
     CMD_NEW_AI,  // Not implemented yet
     CMD_PLACE,
-    CMD_MOVE,
+    CMD_SHOOT,
     CMD_STATE
 } CommandType;
 

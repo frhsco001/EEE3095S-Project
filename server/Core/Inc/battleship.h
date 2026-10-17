@@ -7,8 +7,7 @@ typedef struct CommandStruct CommandStruct;
 
 typedef enum {
     STATE_IDLE,
-    STATE_SETUP_P1,
-    STATE_SETUP_P2,
+    STATE_SETUP,
     STATE_IN_PROGRESS,
     STATE_GAME_OVER
 } GameState;
@@ -39,11 +38,30 @@ typedef struct {
 
 extern GameState current_state;
 extern GameMode current_mode;
+extern uint8_t current_turn;
+
+typedef enum {
+    SHOT_BAD_COORDS,
+    SHOT_REPEAT,
+    SHOT_MISS,
+    SHOT_HIT,
+    SHOT_SUNK,
+    SHOT_WIN
+} ShotResult;
+
+typedef enum {
+    PLACE_OK,          // Valid placement, more ships remain
+    PLACE_COMPLETE,    // Valid placement, all ships placed
+    PLACE_BAD_SHIP,
+    PLACE_BAD_COORDS,
+    PLACE_ALREADY_PLACED,
+    PLACE_OCCUPIED
+} PlaceResult;
 
 void Game_ResetSession();
 void Game_ClearBoard();
 void Game_ProcessCommand(CommandStruct* cmd);
-bool Game_Place(uint8_t player, ShipType ship_type, uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2);
-bool Game_Shoot(uint8_t player, uint8_t x, uint8_t y);
+PlaceResult Game_Place(uint8_t player, ShipType ship_type, uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2);
+ShotResult Game_Shoot(uint8_t player, uint8_t x, uint8_t y, ShipType *sunk_ship);
 
 #endif /* __BATTLESHIP_H */

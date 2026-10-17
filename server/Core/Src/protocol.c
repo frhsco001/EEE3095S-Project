@@ -1,7 +1,6 @@
 #include "protocol.h"
 
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -73,6 +72,7 @@ bool Proto_ParseFrame(const char* frame, CommandStruct* cmd) {
         if (strlen(frame) < 16) return false;
 
         int player_id = frame[7] - '0';
+        if (player_id < 1 || player_id > 2) return false;
 
         if (frame[8] != ',') return false;
 
@@ -110,17 +110,17 @@ bool Proto_ParseFrame(const char* frame, CommandStruct* cmd) {
         return false;
     }
 
-    // Handle MOVE (Format: "MOVE: <1,2>,<A-J><1-10>")
-    if (strncmp(frame, "MOVE: ", 6) == 0) {
-        // Minimum valid length is 10: "MOVE: 1,A1"
+    // Handle SHOOT (Format: "SHOOT: <1,2>,<A-J><1-10>")
+    if (strncmp(frame, "SHOOT: ", 7) == 0) {
+        // Minimum valid length is 10: "SHOOT: 1,A1"
         if (strlen(frame) < 10) return false;
 
-        int player_id = frame[6] - '0';
+        int player_id = frame[7] - '0';
 
-        if (frame[7] != ',') return false;
+        if (frame[8] != ',') return false;
 
-        char col_char = frame[8];
-        int row_val = atoi(&frame[9]);
+        char col_char = frame[9];
+        int row_val = atoi(&frame[10]);
 
         if ((player_id == 1 || player_id == 2) &&
             (col_char >= 'A' && col_char <= 'J') &&
@@ -129,7 +129,7 @@ bool Proto_ParseFrame(const char* frame, CommandStruct* cmd) {
             cmd->x = col_char - 'A';
             cmd->y = row_val - 1;
 
-            cmd->type = CMD_MOVE;
+            cmd->type = CMD_SHOOT;
             return true;
         }
 
@@ -145,11 +145,10 @@ void Proto_Init(UART_HandleTypeDef* huart) {
 
 void Proto_SendResponse(const char* msg) {
     if (proto_uart != NULL) {
-        char tx_buffer[64];
-
-        snprintf(tx_buffer, sizeof(tx_buffer), "%s\n", msg);
-
-        HAL_UART_Transmit(proto_uart, (uint8_t*)tx_buffer, strlen(tx_buffer), HAL_MAX_DELAY);
+        HAL_UART_Transmit(proto_uart, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+    
+        uint8_t newline = '\n';
+        HAL_UART_Transmit(proto_uart, &newline, 1, HAL_MAX_DELAY);
     }
 }
 
