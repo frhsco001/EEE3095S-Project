@@ -71,7 +71,10 @@ class TestShooting:
     # -----------------------------------------------------------------------
 
     def test_repeat_shot_rejected_and_retains_turn(self, stm32):
-        """Shooting a cell that was already fired upon must return REPEAT and not consume the turn."""
+        """
+        Shooting a cell that was already fired upon must return REPEAT
+        and not consume the turn.
+        """
         assert send_command(stm32, "SHOOT: 1,J10") == "MISS: 2,J10"
         assert send_command(stm32, "SHOOT: 2,J10") == "MISS: 1,J10"
 
@@ -104,7 +107,10 @@ class TestShooting:
     # -----------------------------------------------------------------------
 
     def test_sinking_a_ship(self, stm32):
-        """Hitting the final cell of a ship should return SUNK with the correct ship character."""
+        """
+        Hitting the final cell of a ship should return SUNK
+        with the correct ship character.
+        """
         # P2 Patrol boat is at E1 and E2.
 
         # Hit 1/2
@@ -123,7 +129,10 @@ class TestShooting:
     # -----------------------------------------------------------------------
 
     def test_place_command_rejected_during_gameplay(self, stm32):
-        """Attempting to place a ship while the game is running must trigger an OUT_OF_STATE NACK."""
+        """
+        Attempting to place a ship while the game is running must trigger
+        an OUT_OF_STATE NACK.
+        """
         assert (
             send_command(stm32, "PLACE: 1,C,F1,F5") == "NACK: OUT_OF_STATE,IN_PROGRESS"
         )
@@ -136,5 +145,6 @@ class TestShooting:
         # P1 hits P2's Carrier at A1
         assert send_command(stm32, "SHOOT: 1,A1") == "HIT: 2,A1"
 
-        # P2 shooting at A1 on P1's board should not return REPEAT, it should be a fresh HIT
+        # P2 shooting at A1 on P1's board should not return REPEAT,
+        # it should be a fresh HIT
         assert send_command(stm32, "SHOOT: 2,A1") == "HIT: 1,A1"

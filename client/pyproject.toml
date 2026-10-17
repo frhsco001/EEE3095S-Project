@@ -2,17 +2,12 @@
 name = "client"
 version = "0.1.0"
 description = "A PyQt6 GUI client and automated pytest test harness for a STM32 Battleship serial game server."
-authors = [
-    { name = "Scott Faurholm", email = "frhsco001@myuct.ac.za" }
-]
+authors = [{ name = "Scott Faurholm", email = "frhsco001@myuct.ac.za" }]
 requires-python = ">=3.14"
-dependencies = [
-    "pyqt6>=6.11.0",
-    "pyserial>=3.5",
-]
+dependencies = ["pyqt6>=6.11.0", "pyserial>=3.5"]
 
 [project.scripts]
-client = "client:main"
+client = "client.main:main"
 
 [build-system]
 requires = ["uv_build>=0.12.23,<0.13.0"]
@@ -20,5 +15,41 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.414",
     "pytest>=9.1.1",
+    "ruff>=0.17.1",
+    "types-pyserial>=3.5.0.20260712",
 ]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "UP",  # pyupgrade (modernize syntax)
+    "B",   # flake8-bugbear (common bugs and gotchas)
+    "C4",  # flake8-comprehensions (better list/dict/set comprehensions)
+    "SIM", # flake8-simplify (code simplification and idiomatic rewrites)
+    "LOG", # flake8-logging (catches logging anti-patterns)
+    "RUF", # Ruff-specific rules (advanced linting and unused noqa detection)
+]
+ignore = [
+    "ISC001", # Implicit string concatenation (conflicts with Ruff's formatter)
+    "UP012",  # Unnecessary "utf-8" parameter to str.encode()
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"  # Options: "off", "basic", "standard", "strict"
+reportMissingTypeStubs = false # PyQt6 ships its own inline stubs
