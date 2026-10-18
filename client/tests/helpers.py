@@ -13,17 +13,8 @@ def complete_player_1_setup(stm32) -> None:
     """
     Place all Player 1 ships and advance the FSM to Player 2 setup.
     """
-    placements = [
-        "PLACE: 1,C,A1,A5",  # Carrier, length 5
-        "PLACE: 1,B,B1,B4",  # Battleship, length 4
-        "PLACE: 1,D,C1,C3",  # Destroyer, length 3
-        "PLACE: 1,S,D1,D3",  # Submarine, length 3
-    ]
-
-    for command in placements:
-        assert send_command(stm32, command) == "OK: PLACED"
-
-    assert send_command(stm32, "PLACE: 1,P,E1,E2") == "OK: SETUP_P2"
+    command = "FLEET: 1,A1,A5,B1,B4,C1,C3,D1,D3,E1,E2"
+    assert send_command(stm32, command) == "OK: SETUP_P2"
 
 
 def complete_pvp_setup(stm32) -> None:
@@ -32,14 +23,5 @@ def complete_pvp_setup(stm32) -> None:
     """
     complete_player_1_setup(stm32)
 
-    placements = [
-        "PLACE: 2,C,A1,A5",
-        "PLACE: 2,B,B1,B4",
-        "PLACE: 2,D,C1,C3",
-        "PLACE: 2,S,D1,D3",
-    ]
-
-    for command in placements:
-        assert send_command(stm32, command) == "OK: PLACED"
-
-    assert send_command(stm32, "PLACE: 2,P,E1,E2") == "OK: IN_PROGRESS"
+    command = "FLEET: 2,A1,A5,B1,B4,C1,C3,D1,D3,E1,E2"
+    assert send_command(stm32, command) == "OK: IN_PROGRESS"

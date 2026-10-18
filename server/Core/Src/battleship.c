@@ -93,7 +93,7 @@ void Game_ProcessCommand(CommandStruct* cmd) {
             break;
 
         case STATE_SETUP:
-            if (cmd->type != CMD_PLACE) {
+            if (cmd->type != CMD_PLACE_FLEET) {
                 Proto_SendResponse("NACK: OUT_OF_STATE,SETUP");
                 break;
             }
@@ -102,30 +102,28 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                 Proto_SendResponse("NACK: NOTURN");
                 break;
             }
-            PlaceResult place_result = Game_Place(current_turn, cmd->ship, cmd->x, cmd->y, cmd->x2, cmd->y2);
+
+            ShipType err_ship = SHIP_NONE;
+            ShipType err_overlap = SHIP_NONE;
+            PlaceResult place_result = Game_Place(current_turn, cmd->fleet, &err_ship, &err_overlap);
 
             switch (place_result) {
-                case PLACE_BAD_SHIP:
-                    Proto_SendResponse("NACK: BADCMD");
+                case PLACE_BAD_COORDS: {
+                    char msg[] = "NACK: BADCOORDS,?";
+                    msg[16] = Proto_ShipTypeToChar(err_ship);
+                    Proto_SendResponse(msg);
                     break;
+                }
 
-                case PLACE_BAD_COORDS:
-                    Proto_SendResponse("NACK: BADCOORDS");
+                case PLACE_OCCUPIED: {
+                    char msg[] = "NACK: OCCUPIED,?,?";
+                    msg[15] = Proto_ShipTypeToChar(err_ship);
+                    msg[17] = Proto_ShipTypeToChar(err_overlap);
+                    Proto_SendResponse(msg);
                     break;
-
-                case PLACE_ALREADY_PLACED:
-                    Proto_SendResponse("NACK: PLACED");
-                    break;
-
-                case PLACE_OCCUPIED:
-                    Proto_SendResponse("NACK: OCCUPIED");
-                    break;
+                }
 
                 case PLACE_OK:
-                    Proto_SendResponse("OK: PLACED");
-                    break;
-
-                case PLACE_COMPLETE:
                     if (current_turn == 1) {
                         if (current_mode == MODE_AI) {
                             // AI_PlaceShips();
@@ -211,65 +209,78 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                 }
             }
             break;
+        case STATE_GAME_OVER:
+            if (cmd->type == CMD_NEW_PVP) {
+                Game_ClearBoards();
+                current_turn = 1;
+                current_state = STATE_SETUP;
+                current_mode = MODE_PVP;
+                Proto_SendResponse("OK: NEW_PVP");
+            } else if (cmd->type == CMD_NEW_AI) {
+                Game_ClearBoards();
+                current_turn = 1;
+                current_state = STATE_SETUP;
+                current_mode = MODE_AI;
+                Proto_SendResponse("OK: NEW_AI");
+            } else {
+                Proto_SendResponse("NACK: OUT_OF_STATE,GAME_OVER");
+            }
+            break;
     }
 }
 
-PlaceResult Game_Place(uint8_t player, ShipType ship_type, uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2) {
-    if (ship_type < SHIP_CARRIER || ship_type > SHIP_PATROL) {
-        return PLACE_BAD_SHIP;
-    }
+PlaceResult Game_Place(uint8_t player, ShipCoords* fleet, ShipType* err_ship, ShipType* err_overlap) {
+    uint8_t temp_board[10][10] = {0};  // Blank canvas for evaluation
 
-    // make sure ship is completely horizontal or vertical
-    if ((x1 != x2 && y1 != y2) || x1 > 9 || x2 > 9 || y1 > 9 || y2 > 9) {
-        return PLACE_BAD_COORDS;
-    }
+    // Evaluate all 5 ships in memory first
+    for (int i = 0; i < 5; i++) {
+        ShipType ship_type = (ShipType)(i + 1);  // 1 to 5 (Carrier to Patrol)
+        uint8_t x1 = fleet[i].x1, y1 = fleet[i].y1, x2 = fleet[i].x2, y2 = fleet[i].y2;
 
-    ShipState* fleet = player == 1 ? p1_fleet : p2_fleet;
-    ShipState* ship = &fleet[ship_type];
-    if (ship->is_placed) {
-        return PLACE_ALREADY_PLACED;
-    }
+        if (err_ship != NULL) {
+            *err_ship = ship_type;
+        }
 
-    uint8_t (*board)[10] = player == 1 ? p1_board : p2_board;
+        // Orthogonal and bounds check
+        if ((x1 != x2 && y1 != y2) || x1 > 9 || x2 > 9 || y1 > 9 || y2 > 9) {
+            return PLACE_BAD_COORDS;
+        }
 
-    // Find bounds manually so no need for <stdlib.h> abs()
-    uint8_t min_x = (x1 < x2) ? x1 : x2;
-    uint8_t max_x = (x1 > x2) ? x1 : x2;
-    uint8_t min_y = (y1 < y2) ? y1 : y2;
-    uint8_t max_y = (y1 > y2) ? y1 : y2;
+        uint8_t min_x = (x1 < x2) ? x1 : x2;
+        uint8_t max_x = (x1 > x2) ? x1 : x2;
+        uint8_t min_y = (y1 < y2) ? y1 : y2;
+        uint8_t max_y = (y1 > y2) ? y1 : y2;
 
-    // make the coordinates correspond to the correct ship length
-    uint8_t length = (max_x - min_x) + (max_y - min_y) + 1;
-    if (length != ship->length) {
-        return PLACE_BAD_COORDS;
-    }
+        uint8_t length = (max_x - min_x) + (max_y - min_y) + 1;
+        if (length != SHIP_LENGTHS[ship_type]) {
+            return PLACE_BAD_COORDS;
+        }
 
-    // detect collisions
-    for (uint8_t x = min_x; x <= max_x; x++) {
-        for (uint8_t y = min_y; y <= max_y; y++) {
-            if (board[x][y] != SHIP_NONE) {
-                return PLACE_OCCUPIED;
+        // Draw onto temp_board and check for overlapping ships
+        for (uint8_t x = min_x; x <= max_x; x++) {
+            for (uint8_t y = min_y; y <= max_y; y++) {
+                if (temp_board[x][y] != SHIP_NONE) {
+                    if (err_overlap != NULL) {
+                        *err_overlap = temp_board[x][y];
+                    }
+                    return PLACE_OCCUPIED;
+                }
+                temp_board[x][y] = ship_type;
             }
         }
     }
 
-    // place ship on the board
-    for (uint8_t x = min_x; x <= max_x; x++) {
-        for (uint8_t y = min_y; y <= max_y; y++) {
-            board[x][y] = ship_type;
-        }
+    // The entire fleet is valid. Commit the transaction.
+    uint8_t (*board)[10] = player == 1 ? p1_board : p2_board;
+    ShipState* p_fleet = player == 1 ? p1_fleet : p2_fleet;
+
+    memcpy(board, temp_board, sizeof(temp_board));
+
+    for (int i = 1; i <= 5; i++) {
+        p_fleet[i].is_placed = true;
     }
 
-    ship->is_placed = true;
-
-    // Check if all ships have been placed
-    for (uint8_t i = 1; i < 6; i++) {
-        if (!fleet[i].is_placed) {
-            return PLACE_OK;
-        }
-    }
-
-    return PLACE_COMPLETE;
+    return PLACE_OK;
 }
 
 ShotResult Game_Shoot(uint8_t player, uint8_t x, uint8_t y, ShipType* sunk_ship) {

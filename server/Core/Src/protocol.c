@@ -66,48 +66,41 @@ bool Proto_ParseFrame(const char* frame, CommandStruct* cmd) {
         return false;
     }
 
-    // Handle PLACE (Format: "PLACE: <1,2>,<CBDSP>,<A-J><1-10>,<A-J><1-10>")
-    if (strncmp(frame, "PLACE: ", 7) == 0) {
-        // Minimum valid length is 16: "PLACE: 1,C,A1,B1"
-        if (strlen(frame) < 16) return false;
-
+    // Handle FLEET (Format: "FLEET: <1,2>,<C_S>,<C_E>,<B_S>,<B_E>,<D_S>,<D_E>,<S_S>,<S_E>,<P_S>,<P_E>")
+    if (strncmp(frame, "FLEET: ", 7) == 0) {
         int player_id = frame[7] - '0';
-        if (player_id < 1 || player_id > 2) return false;
+        if (player_id < 1 || player_id > 2 || frame[8] != ',') return false;
 
-        if (frame[8] != ',') return false;
+        cmd->type = CMD_PLACE_FLEET;
+        cmd->player = player_id;
 
-        ShipType ship_type = Proto_CharToShipType(frame[9]);
-        if (ship_type == SHIP_NONE) return false;
+        const char* ptr = &frame[9];
 
-        char col1_char = frame[11];
-        int row1_val = atoi(&frame[12]);
+        for (int i = 0; i < 5; i++) {
+            cmd->fleet[i].x1 = ptr[0] - 'A';
+            cmd->fleet[i].y1 = atoi(&ptr[1]) - 1;
 
-        // Use the comma position to handle different length positions (X2 vs X10)
-        const char* comma_ptr = strchr(&frame[13], ',');
-        if (comma_ptr == NULL) return false;
+            // Advance to next comma
+            ptr = strchr(ptr, ',');
+            if (ptr == NULL) return false;
+            ptr++;  // Skip comma
 
-        // Ensure there is enough string left after the comma (minimum "X1")
-        if (strlen(comma_ptr) < 3) return false;
+            cmd->fleet[i].x2 = ptr[0] - 'A';
+            cmd->fleet[i].y2 = atoi(&ptr[1]) - 1;
 
-        char col2_char = comma_ptr[1];
-        int row2_val = atoi(&comma_ptr[2]);
+            if (cmd->fleet[i].x1 > 9 || cmd->fleet[i].y1 > 9 ||
+                cmd->fleet[i].x2 > 9 || cmd->fleet[i].y2 > 9) {
+                return false;
+            }
 
-        if (col1_char >= 'A' && col1_char <= 'J' &&
-            col2_char >= 'A' && col2_char <= 'J' &&
-            row1_val >= 1 && row1_val <= 10 &&
-            row2_val >= 1 && row2_val <= 10) {
-            cmd->player = player_id;
-            cmd->ship = ship_type;
-            cmd->x = col1_char - 'A';
-            cmd->y = row1_val - 1;
-            cmd->x2 = col2_char - 'A';
-            cmd->y2 = row2_val - 1;
-
-            cmd->type = CMD_PLACE;
-            return true;
+            // Advance to next comma for the next ship (skip on the final iteration)
+            if (i < 4) {
+                ptr = strchr(ptr, ',');
+                if (ptr == NULL) return false;
+                ptr++;
+            }
         }
-
-        return false;
+        return true;
     }
 
     // Handle SHOOT (Format: "SHOOT: <1,2>,<A-J><1-10>")
@@ -116,8 +109,7 @@ bool Proto_ParseFrame(const char* frame, CommandStruct* cmd) {
         if (strlen(frame) < 10) return false;
 
         int player_id = frame[7] - '0';
-
-        if (frame[8] != ',') return false;
+        if (player_id < 1 || player_id > 2 || frame[8] != ',') return false;
 
         char col_char = frame[9];
         int row_val = atoi(&frame[10]);
@@ -146,7 +138,7 @@ void Proto_Init(UART_HandleTypeDef* huart) {
 void Proto_SendResponse(const char* msg) {
     if (proto_uart != NULL) {
         HAL_UART_Transmit(proto_uart, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
-    
+
         uint8_t newline = '\n';
         HAL_UART_Transmit(proto_uart, &newline, 1, HAL_MAX_DELAY);
     }
@@ -154,22 +146,34 @@ void Proto_SendResponse(const char* msg) {
 
 ShipType Proto_CharToShipType(char c) {
     switch (c) {
-        case 'C': return SHIP_CARRIER;
-        case 'B': return SHIP_BATTLESHIP;
-        case 'D': return SHIP_DESTROYER;
-        case 'S': return SHIP_SUBMARINE;
-        case 'P': return SHIP_PATROL;
-        default:  return SHIP_NONE;
+        case 'C':
+            return SHIP_CARRIER;
+        case 'B':
+            return SHIP_BATTLESHIP;
+        case 'D':
+            return SHIP_DESTROYER;
+        case 'S':
+            return SHIP_SUBMARINE;
+        case 'P':
+            return SHIP_PATROL;
+        default:
+            return SHIP_NONE;
     }
 }
 
 char Proto_ShipTypeToChar(ShipType type) {
     switch (type) {
-        case SHIP_CARRIER:    return 'C';
-        case SHIP_BATTLESHIP: return 'B';
-        case SHIP_DESTROYER:  return 'D';
-        case SHIP_SUBMARINE:  return 'S';
-        case SHIP_PATROL:     return 'P';
-        default:              return '?';
+        case SHIP_CARRIER:
+            return 'C';
+        case SHIP_BATTLESHIP:
+            return 'B';
+        case SHIP_DESTROYER:
+            return 'D';
+        case SHIP_SUBMARINE:
+            return 'S';
+        case SHIP_PATROL:
+            return 'P';
+        default:
+            return '?';
     }
 }

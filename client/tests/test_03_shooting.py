@@ -133,9 +133,8 @@ class TestShooting:
         Attempting to place a ship while the game is running must trigger
         an OUT_OF_STATE NACK.
         """
-        assert (
-            send_command(stm32, "PLACE: 1,C,F1,F5") == "NACK: OUT_OF_STATE,IN_PROGRESS"
-        )
+        cmd = "FLEET: 1,A1,A5,B1,B4,C1,C3,D1,D3,E1,E2"
+        assert send_command(stm32, cmd) == "NACK: OUT_OF_STATE,IN_PROGRESS"
 
         # Verify it didn't consume the turn
         assert send_command(stm32, "SHOOT: 1,A1") == "HIT: 2,A1"

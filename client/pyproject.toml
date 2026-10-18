@@ -37,6 +37,7 @@ select = [
     "C4",  # flake8-comprehensions (better list/dict/set comprehensions)
     "SIM", # flake8-simplify (code simplification and idiomatic rewrites)
     "LOG", # flake8-logging (catches logging anti-patterns)
+    "PT",  # flake8-pytest-style (best practices in pytest test suites)
     "RUF", # Ruff-specific rules (advanced linting and unused noqa detection)
 ]
 ignore = [

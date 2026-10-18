@@ -6,7 +6,7 @@
 #include "battleship.h"
 #include "main.h"
 
-#define MAX_FRAME_LEN 32
+#define MAX_FRAME_LEN 64
 extern char rx_buffer[MAX_FRAME_LEN];
 extern volatile uint8_t rx_index;
 extern volatile uint8_t frame_ready;
@@ -20,22 +20,27 @@ typedef enum {
     CMD_DISCONNECT,  /**< Request to terminate link and reset game. */
     CMD_NEW_PVP,     /**< Request to begin a Hotseat Player vs Player match. */
     CMD_NEW_AI,      /**< Request to begin a Player vs AI match (Not implemented). */
-    CMD_PLACE,       /**< Fleet placement command. */
+    CMD_PLACE_FLEET, /**< Fleet placement command. */
     CMD_SHOOT,       /**< Cell targeting command during gameplay. */
     CMD_STATE        /**< Request for current FSM state (optional debugging). */
 } CommandType;
+
+typedef struct ShipCoords {
+    uint8_t x1;
+    uint8_t y1;
+    uint8_t x2;
+    uint8_t y2;
+} ShipCoords;
 
 /**
  * @brief A decoded protocol message containing all relevant game execution variables.
  */
 typedef struct CommandStruct {
-    CommandType type;  /**< The type of action requested. */
-    uint8_t player;    /**< ID of the player executing the action (1 or 2). */
-    ShipType ship;     /**< Target ship type (used primarily by CMD_PLACE). */
-    uint8_t x;         /**< Target X coordinate / Start X coordinate (0-9 for A-J). */
-    uint8_t y;         /**< Target Y coordinate / Start Y coordinate (0-9). */
-    uint8_t x2;        /**< End X coordinate for ship placement (0-9). */
-    uint8_t y2;        /**< End Y coordinate for ship placement (0-9). */
+    CommandType type;    /**< The type of action requested. */
+    uint8_t player;      /**< ID of the player executing the action (1 or 2). */
+    uint8_t x;           /**< Target X coordinate (0-9 for A-J). */
+    uint8_t y;           /**< Target Y coordinate (0-9). */
+    ShipCoords fleet[5]; /**< Array for batch CMD_PLACE_FLEET (Indices 0-4 match ships 1-5). */
 } CommandStruct;
 
 /**

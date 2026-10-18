@@ -14,7 +14,7 @@ class TestProtocol:
 
         # Put the STM32 into a known idle state
         send_command(stm32, "DISCONNECT")
-        yield
+        return
 
     # -----------------------------------------------------------------------
     # Baseline Session Commands
@@ -71,29 +71,36 @@ class TestProtocol:
         assert send_command(stm32, command) == "NACK: BADCMD"
 
     # -----------------------------------------------------------------------
-    # PLACE Command Parsing
+    # FLEET Command Parsing
     # -----------------------------------------------------------------------
 
-    def test_valid_place_parsing(self, stm32):
+    def test_valid_fleet_parsing(self, stm32):
         """
-        A correctly formatted PLACE command in the IDLE state should
+        A correctly formatted FLEET command in the IDLE state should
         survive the parser and be rejected by the FSM with NOGAME.
         """
-        assert send_command(stm32, "PLACE: 1,C,A1,A5") == "NACK: NOGAME"
+        cmd = "FLEET: 1,A1,A5,B1,B4,C1,C3,D1,D3,E1,E2"
+        assert send_command(stm32, cmd) == "NACK: NOGAME"
 
     @pytest.mark.parametrize(
         "command",
         [
-            "PLACE: 1,X,A1,A5",  # Unknown ship type 'X'
-            "PLACE: 3,C,A1,A5",  # Invalid player ID
-            "PLACE: 1,C,A1A5",  # Missing comma delimiter
-            "PLACE: 1,C,A1,",  # Missing second coordinate
-            "PLACE: 1,C,Z9,A5",  # Invalid coordinates
-            "PLACE 1,C,A1,A5",  # Missing colon
+            # Invalid player ID (must be 1 or 2)
+            "FLEET: 3,A1,A5,B1,B4,C1,C3,D1,D3,E1,E2",
+            # Missing comma delimiter after player ID
+            "FLEET: 1A1,A5,B1,B4,C1,C3,D1,D3,E1,E2",
+            # Missing final coordinate
+            "FLEET: 1,A1,A5,B1,B4,C1,C3,D1,D3,E1,",
+            # Invalid coordinates (Z9) rejected by bounds check
+            "FLEET: 1,Z9,A5,B1,B4,C1,C3,D1,D3,E1,E2",
+            # Missing colon in command header
+            "FLEET 1,A1,A5,B1,B4,C1,C3,D1,D3,E1,E2",
+            # Missing comma delimiters between coordinate pairs
+            "FLEET: 1,A1A5,B1B4,C1C3,D1D3,E1E2",
         ],
     )
-    def test_malformed_place_commands(self, stm32, command):
-        """Malformed PLACE commands must be caught by the parser as BADCMD."""
+    def test_malformed_fleet_commands(self, stm32, command):
+        """Malformed FLEET commands must be caught by the parser as BADCMD."""
         assert send_command(stm32, command) == "NACK: BADCMD"
 
     # -----------------------------------------------------------------------
