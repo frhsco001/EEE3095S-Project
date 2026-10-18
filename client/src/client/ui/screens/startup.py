@@ -3,14 +3,13 @@ from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 
 class StartupScreen(QWidget):
-    # Emit 'PVP' or 'AI' when the user makes a selection
-    mode_selected = pyqtSignal(str)
+    send_command = pyqtSignal(str)
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._setup_ui()
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -27,12 +26,12 @@ class StartupScreen(QWidget):
         self.btn_pvp = QPushButton("PLAYER VS PLAYER (HOTSEAT)")
         self.btn_pvp.setFixedSize(300, 60)
         self.btn_pvp.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_pvp.clicked.connect(lambda: self.mode_selected.emit("PVP"))
+        self.btn_pvp.clicked.connect(lambda: self._select_mode("PVP"))
 
         self.btn_ai = QPushButton("PLAYER VS AI (SINGLE PLAYER)")
         self.btn_ai.setFixedSize(300, 60)
         self.btn_ai.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_ai.clicked.connect(lambda: self.mode_selected.emit("AI"))
+        self.btn_ai.clicked.connect(lambda: self._select_mode("AI"))
 
         layout.addWidget(title_label)
         layout.addWidget(subtitle_label)
@@ -40,3 +39,8 @@ class StartupScreen(QWidget):
         layout.addWidget(self.btn_pvp, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addSpacing(15)
         layout.addWidget(self.btn_ai, alignment=Qt.AlignmentFlag.AlignCenter)
+
+    def _select_mode(self, mode: str) -> None:
+        self.btn_pvp.setEnabled(False)
+        self.btn_ai.setEnabled(False)
+        self.send_command.emit(f"NEW: {mode}")

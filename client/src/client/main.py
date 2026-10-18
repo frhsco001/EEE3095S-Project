@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 
 
-def load_assets(app: QApplication):
+def load_assets(app: QApplication) -> None:
     try:
         font_path = str(
             resources.files("client.assets.fonts").joinpath("RobotoMono-Regular.ttf")
@@ -35,7 +35,7 @@ def load_assets(app: QApplication):
         logger.error("Error loading assets: %s", e)
 
 
-def main():
+def main() -> None:
     app = QApplication(sys.argv)
 
     load_assets(app)

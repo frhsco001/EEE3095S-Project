@@ -51,6 +51,6 @@ indent-style = "space"
 
 [tool.pyright]
 include = ["src"]
-pythonVersion = "3.12"
+pythonVersion = "3.14"
 typeCheckingMode = "standard"  # Options: "off", "basic", "standard", "strict"
 reportMissingTypeStubs = false # PyQt6 ships its own inline stubs
