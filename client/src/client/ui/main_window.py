@@ -4,9 +4,17 @@ from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QMainWindow, QStackedWidget, QWidget
 
+from client.core.coordinates import format_coordinate, iter_coordinate_range
 from client.core.serial_worker import SerialWorker
 
-# Import your screens
+# Import the screens
+from client.ui.constants import (
+    PROTOCOL_SHIP_ORDER,
+    Board,
+    BoardStore,
+    _empty_board,
+)
+from client.ui.screens.gameplay import GameplayScreen
 from client.ui.screens.pass_device import PassDeviceScreen
 from client.ui.screens.setup import SetupScreen
 from client.ui.screens.startup import StartupScreen
@@ -15,10 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(
+        self, dev_fleet_p1: str | None = None, dev_fleet_p2: str | None = None
+    ) -> None:
         super().__init__()
         self.setWindowTitle("Battleship - STM32 Terminal")
-        self.resize(1024, 768)  # 661 583
+        self.resize(1024, 768)
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
@@ -27,22 +37,29 @@ class MainWindow(QMainWindow):
         self.serial_worker.message_received.connect(self.handle_server_response)
 
         self.ai_mode = False
+        self.boards: BoardStore = {}
+
+        self.dev_p1 = dev_fleet_p1
+        self.dev_p2 = dev_fleet_p2
+        self.use_setup_shortcut = self.dev_p1 is not None
 
         self.startup_screen = StartupScreen()
         self.setup_screen = SetupScreen()
         self.pass_screen = PassDeviceScreen()
-        # self.gameplay_screen = GameplayScreen()
+        self.gameplay_screen = GameplayScreen()
 
         self.startup_screen.send_command.connect(self.serial_worker.send_command)
         self.setup_screen.send_command.connect(self.serial_worker.send_command)
+        self.gameplay_screen.send_command.connect(self.serial_worker.send_command)
 
         self._post_pass_widget: QWidget | None = None
         self.pass_screen.ready.connect(self._complete_hotseat_transition)
+        self.gameplay_screen.turn_ended.connect(self._gameplay_transition)
 
         self.stack.addWidget(self.startup_screen)
         self.stack.addWidget(self.setup_screen)
         self.stack.addWidget(self.pass_screen)
-        # self.stack.addWidget(self.gameplay_screen)
+        self.stack.addWidget(self.gameplay_screen)
 
         self.serial_worker.start()
         self.serial_worker.send_command("CONNECT")
@@ -56,21 +73,42 @@ class MainWindow(QMainWindow):
         """
         response = response.strip()
 
+        if response == "OK":
+            if self.use_setup_shortcut:
+                mode = "PVP" if self.dev_p2 else "AI"
+                self.serial_worker.send_command(f"NEW: {mode}")
+            return
         if response in {"OK: NEW_PVP", "OK: NEW_AI"}:
             self.ai_mode = response == "OK: NEW_AI"
-            self.setup_screen.reset_for_player(1)
-            self.stack.setCurrentWidget(self.setup_screen)
+            if self.use_setup_shortcut:
+                self.serial_worker.send_command(f"FLEET: 1,{self.dev_p1}")
+            else:
+                self.setup_screen.reset_for_player(1)
+                self.stack.setCurrentWidget(self.setup_screen)
             return
         if response == "OK: SETUP_P2":
-            self.setup_screen.reset_for_player(2)
-            self.trigger_hotseat_transition(player=2, next_widget=self.setup_screen)
+            if self.use_setup_shortcut:
+                self.serial_worker.send_command(f"FLEET: 2,{self.dev_p2}")
+            else:
+                self.boards[1] = self.setup_screen.get_board_state()
+                self.setup_screen.reset_for_player(2)
+                self.trigger_hotseat_transition(player=2, next_widget=self.setup_screen)
             return
         if response == "OK: IN_PROGRESS":
-            # self.gameplay_screen.prepare_for_turn(1)
-            # self.trigger_hotseat_transition(player=1, next_widget=self.gameplay_screen)
+            if self.use_setup_shortcut and self.dev_p1:
+                self.boards[1] = self._parse_debug_fleet(self.dev_p1)
+                if self.dev_p2:
+                    self.boards[2] = self._parse_debug_fleet(self.dev_p2)
+                self.use_setup_shortcut = False
+            else:
+                if not self.ai_mode:
+                    self.boards[2] = self.setup_screen.get_board_state()
+            self.gameplay_screen.initialize_game(self.boards)
+            self.gameplay_screen.prepare_for_turn(1)
+            self.trigger_hotseat_transition(player=1, next_widget=self.gameplay_screen)
             return
         if response.startswith("WIN:"):
-            return
+            pass
 
         current_widget = self.stack.currentWidget()
 
@@ -105,6 +143,37 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self._post_pass_widget)
         self._post_pass_widget = None
 
+    def _gameplay_transition(self, player_id: int) -> None:
+        if not self.ai_mode:
+            self.gameplay_screen.prepare_for_turn(player_id)
+            self.trigger_hotseat_transition(player_id, self.gameplay_screen)
+
+    def _parse_debug_fleet(self, fleet_str: str) -> Board:
+        board: Board = _empty_board()
+        coords = fleet_str.split(",")
+
+        expected_count = len(PROTOCOL_SHIP_ORDER) * 2
+        if len(coords) != expected_count:
+            raise ValueError(
+                f"Expected {expected_count} fleet coordinates, "
+                f"received {len(coords)}"
+            )
+
+        for i, ship_id in enumerate(PROTOCOL_SHIP_ORDER):
+            start = coords[i * 2]
+            end = coords[i * 2 + 1]
+
+            for row, column in iter_coordinate_range(start, end):
+                if board[row][column] is not None:
+                    raise ValueError(
+                        f"Ship {ship_id} overlaps another ship at "
+                        f"{format_coordinate(row, column)}"
+                    )
+
+                board[row][column] = ship_id
+
+        return board
+
     def closeEvent(self, event: QCloseEvent) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
         self.serial_worker.stop()
-        return super().closeEvent(event)
+        super().closeEvent(event)

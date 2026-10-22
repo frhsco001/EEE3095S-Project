@@ -1,5 +1,4 @@
 import logging
-from dataclasses import dataclass
 
 from PyQt6.QtCore import QEvent, QObject, QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QCursor, QKeyEvent, QMouseEvent
@@ -14,32 +13,23 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from client.core.coordinates import format_coordinate
+from client.ui.constants import (
+    BOARD_SIZE,
+    CELL_SIZE,
+    FLEET_SIZE,
+    PROTOCOL_SHIP_ORDER,
+    SHIP_CONFIG,
+    Board,
+)
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class ShipSpec:
-    name: str
-    length: int
-    colour: str
-
-
-SHIP_CONFIG: dict[str, ShipSpec] = {
-    "C": ShipSpec("Carrier", 5, "#5D8AA8"),
-    "B": ShipSpec("Battleship", 4, "#4A646C"),
-    "D": ShipSpec("Destroyer", 3, "#3B444B"),
-    "S": ShipSpec("Submarine", 3, "#232B2B"),
-    "P": ShipSpec("Patrol", 2, "#8B0000"),
-}
-PROTOCOL_SHIP_ORDER = ("C", "B", "D", "S", "P")
-
-CELL_SIZE = 40
-BOARD_SIZE = 10
-FLEET_SIZE = len(SHIP_CONFIG)
 
 
 class SetupScreen(QWidget):
     send_command = pyqtSignal(str)
+
+    type ShipPlacement = tuple[int, int, int, int]
 
     def __init__(self) -> None:
         super().__init__()
@@ -48,8 +38,8 @@ class SetupScreen(QWidget):
         self.player = 1
 
         # Game State
-        self.fleet_placed: dict[str, tuple[int, int, int, int]] = {}
-        self.board_state: list[list[str | None]] = [
+        self.fleet_placed: dict[str, SetupScreen.ShipPlacement] = {}
+        self.board_state: Board = [
             [None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)
         ]
 
@@ -288,7 +278,7 @@ class SetupScreen(QWidget):
             end_r = start_r if self.drag_horizontal else start_r + length - 1
             end_c = start_c + length - 1 if self.drag_horizontal else start_c
 
-            self.fleet_placed[ship_id] = (start_c, start_r, end_c, end_r)
+            self.fleet_placed[ship_id] = (start_r, start_c, end_r, end_c)
 
             for row, col in self.current_hover_cells:
                 self.board_state[row][col] = ship_id
@@ -372,6 +362,10 @@ class SetupScreen(QWidget):
         self.player = player_id
         self.reset_board()
 
+    def get_board_state(self) -> Board:
+        """Returns a deep copy of the current board state."""
+        return [row[:] for row in self.board_state]
+
     def on_deploy_clicked(self) -> None:
         if len(self.fleet_placed) != FLEET_SIZE:
             return
@@ -381,11 +375,10 @@ class SetupScreen(QWidget):
         parts = [f"FLEET: {self.player}"]
 
         for ship_id in PROTOCOL_SHIP_ORDER:
-            c1, r1, c2, r2 = self.fleet_placed[ship_id]
-            start_coord = f"{chr(65 + c1)}{r1 + 1}"
-            end_coord = f"{chr(65 + c2)}{r2 + 1}"
-            parts.append(start_coord)
-            parts.append(end_coord)
+            start_row, start_column, end_row, end_column = self.fleet_placed[ship_id]
+
+            parts.append(format_coordinate(start_row, start_column))
+            parts.append(format_coordinate(end_row, end_column))
 
         self.btn_deploy.setEnabled(False)
         self.status_label.setText("Validating fleet geometry with server...")

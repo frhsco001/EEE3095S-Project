@@ -36,18 +36,77 @@ void Game_ClearBoards() {
 }
 
 /**
- * @brief Formats and transmits a standard cell response over UART without snprintf.
+ * @brief Helper function to append a formatted coordinate (e.g., "A1" or "J10") to a buffer.
  *
- * @param[in] prefix  Null-terminated prefix string (e.g., "HIT: " or "MISS: ").
+ * @param[out] buf   Pointer to the character buffer being written to.
+ * @param[in]  index The current write index in the buffer.
+ * @param[in]  x     Column index (0-9).
+ * @param[in]  y     Row index (0-9).
+ *
+ * @return The new buffer index after the coordinate has been appended.
+ */
+static uint8_t AppendCoord(char* buf, uint8_t index, uint8_t x, uint8_t y) {
+    buf[index++] = (char)('A' + x);
+
+    if (y == 9) {
+        buf[index++] = '1';
+        buf[index++] = '0';
+    } else {
+        buf[index++] = (char)('1' + y);
+    }
+
+    return index;
+}
+
+/**
+ * @brief Scans a player's board to find the start and end coordinates of a specific ship.
+ *
+ * Iterates through the 10x10 grid to locate all cells occupied by the specified ship type.
+ * Since ships are placed orthogonally, the first and last matches during a sequential
+ * scan represent the bounding coordinates of the ship.
+ *
+ * @param[in]  target_player The identifier of the player whose board is being scanned (1 or 2).
+ * @param[in]  ship          The specific ShipType enum to search for.
+ * @param[out] x1            Pointer to store the starting column coordinate (0-9).
+ * @param[out] y1            Pointer to store the starting row coordinate (0-9).
+ * @param[out] x2            Pointer to store the ending column coordinate (0-9).
+ * @param[out] y2            Pointer to store the ending row coordinate (0-9).
+ */
+static void FindShipCoords(uint8_t target_player, ShipType ship, uint8_t* x1, uint8_t* y1, uint8_t* x2, uint8_t* y2) {
+    uint8_t (*board)[10] = target_player == 1 ? p1_board : p2_board;
+    bool found_first = false;
+
+    for (uint8_t x = 0; x < 10; x++) {
+        for (uint8_t y = 0; y < 10; y++) {
+            if ((board[x][y] & 0x7F) == ship) {
+                if (!found_first) {
+                    *x1 = x;
+                    *y1 = y;
+                    *x2 = x;
+                    *y2 = y;
+                    found_first = true;
+                } else {
+                    *x2 = x;
+                    *y2 = y;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * @brief Formats and transmits a standard single-cell protocol response over UART.
+ *
+ * @param[in] prefix  Null-terminated prefix string to prepend (e.g., "HIT: " or "MISS: ").
  * @param[in] player  Target player identifier (1 or 2).
- * @param[in] x       Column index (0-9).
- * @param[in] y       Row index (0-9).
+ * @param[in] x       Target column index (0-9).
+ * @param[in] y       Target row index (0-9).
  */
 static void Proto_SendCellResponse(const char* prefix, uint8_t player, uint8_t x, uint8_t y) {
     char msg[16];
     uint8_t len = 0;
 
-    while (prefix[len] != '\0' && len < 8) {
+    while (prefix[len] != '\0') {
         msg[len] = prefix[len];
         len++;
     }
@@ -55,14 +114,40 @@ static void Proto_SendCellResponse(const char* prefix, uint8_t player, uint8_t x
     msg[len++] = (char)('0' + player);
     msg[len++] = ',';
 
-    msg[len++] = (char)('A' + x);
+    len = AppendCoord(msg, len, x, y);
+    msg[len] = '\0';
 
-    if (y == 9) {
-        msg[len++] = '1';
-        msg[len++] = '0';
-    } else {
-        msg[len++] = (char)('1' + y);
+    Proto_SendResponse(msg);
+}
+
+/**
+ * @brief Formats and transmits a SUNK or WIN protocol response including ship bounds.
+ *
+ * @param[in] prefix  Null-terminated prefix string to prepend (e.g., "SUNK: " or "WIN: ").
+ * @param[in] player  Target player identifier (1 or 2).
+ * @param[in] ship    The ShipType that was destroyed.
+ * @param[in] x1      The starting column index of the ship (0-9).
+ * @param[in] y1      The starting row index of the ship (0-9).
+ * @param[in] x2      The ending column index of the ship (0-9).
+ * @param[in] y2      The ending row index of the ship (0-9).
+ */
+static void Proto_SendShipResponse(const char* prefix, uint8_t player, ShipType ship, uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2) {
+    char msg[32];
+    uint8_t len = 0;
+
+    while (prefix[len] != '\0') {
+        msg[len] = prefix[len];
+        len++;
     }
+
+    msg[len++] = (char)('0' + player);
+    msg[len++] = ',';
+    msg[len++] = Proto_ShipTypeToChar(ship);
+    msg[len++] = ',';
+
+    len = AppendCoord(msg, len, x1, y1);
+    msg[len++] = ',';
+    len = AppendCoord(msg, len, x2, y2);
 
     msg[len] = '\0';
 
@@ -186,23 +271,20 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                     break;
 
                 case SHOT_SUNK: {
-                    char msg[] = "SUNK: X,?";
+                    uint8_t x1, y1, x2, y2;
+                    FindShipCoords(other_player, sunk_ship, &x1, &y1, &x2, &y2);
 
-                    msg[6] = (char)('0' + other_player);
-                    msg[8] = Proto_ShipTypeToChar(sunk_ship);
-
-                    Proto_SendResponse(msg);
+                    Proto_SendShipResponse("SUNK: ", other_player, sunk_ship, x1, y1, x2, y2);
 
                     current_turn = current_turn == 1U ? 2U : 1U;
                     break;
                 }
 
                 case SHOT_WIN: {
-                    char msg[] = "WIN: X,?";
-                    msg[5] = (char)('0' + cmd->player);
-                    msg[7] = Proto_ShipTypeToChar(sunk_ship);
+                    uint8_t x1, y1, x2, y2;
+                    FindShipCoords(other_player, sunk_ship, &x1, &y1, &x2, &y2);
 
-                    Proto_SendResponse(msg);
+                    Proto_SendShipResponse("WIN: ", cmd->player, sunk_ship, x1, y1, x2, y2);
 
                     current_state = STATE_GAME_OVER;
                     break;
