@@ -1,27 +1,16 @@
 import logging
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtWidgets import (
-    QFrame,
-    QGridLayout,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-)
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from client.core.coordinates import format_coordinate, iter_coordinate_range
-from client.ui.constants import (
-    BOARD_SIZE,
-    CELL_SIZE,
-    COLOR_HIT,
-    COLOR_MISS,
-    COLOR_WATER,
-    SHIP_CONFIG,
-    BoardStore,
-    _empty_board,
+from client.ui.board_utils import (
+    apply_cell_style,
+    create_empty_board,
+    create_grid,
+    create_legend,
 )
+from client.ui.constants import BOARD_SIZE, SHIP_CONFIG, BoardStore
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +18,7 @@ logger = logging.getLogger(__name__)
 class GameplayScreen(QWidget):
     send_command = pyqtSignal(str)
     turn_ended = pyqtSignal(int)
+    game_over = pyqtSignal(int)
 
     def __init__(self) -> None:
         super().__init__()
@@ -42,7 +32,7 @@ class GameplayScreen(QWidget):
         self.active_player = 1
         self.input_locked = True
         self.pending_shot: tuple[int, int] | None = None
-        self.shots = {1: _empty_board(), 2: _empty_board()}
+        self.shots = {1: create_empty_board(), 2: create_empty_board()}
 
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
@@ -64,7 +54,9 @@ class GameplayScreen(QWidget):
         radar_title.setStyleSheet("font-size: 18px; font-weight: bold;")
         radar_panel.addWidget(radar_title)
 
-        self.radar_cells = self._create_grid(radar_panel, clickable=True)
+        self.radar_cells = create_grid(
+            radar_panel, clickable=True, on_click=self._on_radar_click
+        )
         grids_layout.addLayout(radar_panel)
 
         grids_layout.addSpacing(60)
@@ -76,116 +68,20 @@ class GameplayScreen(QWidget):
         home_title.setStyleSheet("font-size: 18px; font-weight: bold;")
         home_panel.addWidget(home_title)
 
-        self.home_cells = self._create_grid(home_panel, clickable=False)
+        self.home_cells = create_grid(home_panel, clickable=False)
         grids_layout.addLayout(home_panel)
 
         main_layout.addLayout(grids_layout)
         main_layout.addSpacing(20)
 
-        self._create_legend(main_layout)
+        create_legend(main_layout)
         main_layout.addStretch()
-
-    def _create_legend(self, parent_layout: QVBoxLayout) -> None:
-        legend_container = QFrame()
-        legend_container.setStyleSheet(
-            "QFrame { background-color: #0b1a26; border-radius: 8px; padding: 10px; }"
-        )
-
-        legend_layout = QHBoxLayout(legend_container)
-        legend_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        legend_layout.setSpacing(25)
-
-        title = QLabel("KEY:")
-        title.setStyleSheet(
-            "font-weight: bold; font-size: 16px;"
-            "color: #FFFFFF; background: transparent;"
-        )
-        legend_layout.addWidget(title)
-
-        items = [
-            ("Water", COLOR_WATER, "1px solid #172a3a", "", "#FFFFFF"),
-            ("Ship", SHIP_CONFIG["C"].colour, "1px solid #172a3a", "", "#FFFFFF"),
-            ("Miss", COLOR_MISS, "1px solid #172a3a", "O", "#000000"),
-            ("Hit", COLOR_WATER, f"2px solid {COLOR_HIT}", "X", COLOR_HIT),
-            ("Sunk", COLOR_WATER, f"2px solid {COLOR_HIT}", "S", COLOR_HIT),
-        ]
-
-        for label_text, bg, border, txt, txt_color in items:
-            row = QHBoxLayout()
-            row.setSpacing(8)
-
-            icon = QLabel(txt)
-            icon.setFixedSize(CELL_SIZE, CELL_SIZE)
-            icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            icon.setStyleSheet(
-                f"background-color: {bg};"
-                f"border: {border};"
-                f"color: {txt_color};"
-                f"font-weight: bold;"
-                f"font-size: 16px;"
-            )
-
-            lbl = QLabel(label_text)
-            lbl.setStyleSheet(
-                "font-weight: bold; font-size: 14px;"
-                "color: #FFFFFF; background: transparent;"
-            )
-            row.addWidget(icon)
-            row.addWidget(lbl)
-            legend_layout.addLayout(row)
-
-        parent_layout.addWidget(
-            legend_container, alignment=Qt.AlignmentFlag.AlignCenter
-        )
-
-    def _create_grid(
-        self, parent: QVBoxLayout, clickable: bool
-    ) -> list[list[QPushButton | QLabel]]:
-        container = QFrame()
-        container.setStyleSheet(
-            "background-color: #0b1a26; border-radius: 8px; padding: 10px;"
-        )
-        layout = QGridLayout(container)
-        layout.setSpacing(2)
-
-        for col in range(BOARD_SIZE):
-            lbl = QLabel(chr(65 + col))
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.addWidget(lbl, 0, col + 1)
-
-        for row in range(BOARD_SIZE):
-            lbl = QLabel(str(row + 1))
-            lbl.setAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-            layout.addWidget(lbl, row + 1, 0)
-
-        cells: list[list[QPushButton | QLabel]] = []
-        for r in range(BOARD_SIZE):
-            row_cells: list[QPushButton | QLabel] = []
-            for c in range(BOARD_SIZE):
-                if clickable:
-                    btn = QPushButton()
-                    btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                    btn.clicked.connect(
-                        lambda _, rr=r, cc=c: self._on_radar_click(rr, cc)
-                    )
-                    widget: QWidget = btn
-                else:
-                    widget = QLabel()
-                    widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-                widget.setFixedSize(CELL_SIZE, CELL_SIZE)
-                layout.addWidget(widget, r + 1, c + 1)
-                row_cells.append(widget)
-            cells.append(row_cells)
-
-        parent.addWidget(container)
-        return cells
 
     def initialize_game(self, boards: BoardStore) -> None:
         self._reset_game_state()
-        self.layouts = boards
+        self.layouts = {
+            player_id: [row[:] for row in board] for player_id, board in boards.items()
+        }
         self._draw_boards()
 
     def prepare_for_turn(self, player_id: int) -> None:
@@ -224,6 +120,7 @@ class GameplayScreen(QWidget):
             return True
 
         target_player = 2 if self.active_player == 1 else 1
+
         if self.pending_shot is None:
             logger.warning("Received shot result without a pending shot: %r", response)
             return False
@@ -246,106 +143,53 @@ class GameplayScreen(QWidget):
             return True
 
         if response.startswith("SUNK:"):
-            # Format: SUNK: <TargetPlayer>,<ShipChar>,<StartCoord>,<EndCoord>
             parts = response.split(",")
             if len(parts) != 4:
                 logger.warning("Malformed SUNK response: %r", response)
                 return False
 
-            _, target_text = parts[0].split(":", maxsplit=1)
-            target_player = int(target_text.strip())
+            target_player = int(parts[0].split(":", maxsplit=1)[1].strip())
 
             ship_char = parts[1].strip()
-            start_coord = parts[2].strip()
-            end_coord = parts[3].strip()
-
-            self._mark_sunk_ship(target_player, start_coord, end_coord)
-
             if ship_char not in SHIP_CONFIG:
                 logger.warning("Malformed SUNK response: %r", response)
                 return False
             ship_name = SHIP_CONFIG[ship_char].name
+            self._mark_sunk_ship(target_player, parts[2].strip(), parts[3].strip())
             self.log_label.setText(f"Direct Hit! You sunk their {ship_name}!")
+
             self._draw_boards()
             self._schedule_turn_end(target_player)
             return True
 
         if response.startswith("WIN:"):
-            # Format: WIN: <Winner>,<ShipChar>,<StartCoord>,<EndCoord>
+            # WIN: <Winner>,<ShipChar>,<StartCoord>,<EndCoord>
             parts = response.split(",")
-            start_coord = parts[2].strip()
-            end_coord = parts[3].strip()
+            if len(parts) != 4:
+                logger.warning("Malformed WIN response: %r", response)
+                return False
+            winner_id = int(parts[0].split(":", maxsplit=1)[1].strip())
 
-            self._mark_sunk_ship(target_player, start_coord, end_coord)
-
+            self._mark_sunk_ship(target_player, parts[2].strip(), parts[3].strip())
             self.log_label.setText("VICTORY! All enemy ships destroyed.")
             self._draw_boards()
+
+            QTimer.singleShot(100, lambda: self.game_over.emit(winner_id))
             return True
 
         return False
 
     def _schedule_turn_end(self, next_player: int) -> None:
-        QTimer.singleShot(1500, lambda: self.turn_ended.emit(next_player))
+        QTimer.singleShot(100, lambda: self.turn_ended.emit(next_player))
 
     def _draw_boards(self) -> None:
         target = 2 if self.active_player == 1 else 1
-
+        home_layout = self.layouts.get(self.active_player)
         for r in range(BOARD_SIZE):
             for c in range(BOARD_SIZE):
                 radar_shot = self.shots[target][r][c]
-                self._apply_style(self.radar_cells[r][c], None, radar_shot)
+                apply_cell_style(self.radar_cells[r][c], None, radar_shot)
 
                 home_shot = self.shots[self.active_player][r][c]
-                home_ship = None
-                if self.layouts.get(self.active_player):
-                    home_ship = self.layouts[self.active_player][r][c]
-
-                self._apply_style(self.home_cells[r][c], home_ship, home_shot)
-
-    def _apply_style(
-        self, widget: QWidget, ship_id: str | None, shot_type: str | None
-    ) -> None:
-        bg_color = COLOR_WATER
-        border = "1px solid #172a3a"
-        text = ""
-        text_color = "#FFFFFF"
-        hover_css = ""
-
-        if ship_id is not None:
-            bg_color = SHIP_CONFIG[ship_id].colour
-
-        if shot_type == "MISS":
-            bg_color = COLOR_MISS
-            text_color = "#000000"
-            text = "O"
-        elif shot_type == "HIT":
-            text_color = COLOR_HIT
-            text = "X"
-            border = f"2px solid {COLOR_HIT}"
-        elif shot_type == "SUNK":
-            text_color = COLOR_HIT
-            text = "S"
-            border = f"2px solid {COLOR_HIT}"
-
-        if isinstance(widget, QPushButton):
-            if shot_type is None:
-                hover_css = "QPushButton:hover { background-color: #2c5987; }"
-                widget.setCursor(Qt.CursorShape.PointingHandCursor)
-            else:
-                widget.setCursor(Qt.CursorShape.ArrowCursor)
-
-        widget_type = "QPushButton" if isinstance(widget, QPushButton) else "QLabel"
-
-        widget.setStyleSheet(f"""
-            {widget_type} {{
-                background-color: {bg_color};
-                color: {text_color};
-                font-weight: bold;
-                font-size: 16px;
-                border: {border};
-            }}
-            {hover_css}
-        """)
-
-        if isinstance(widget, (QPushButton, QLabel)):
-            widget.setText(text)
+                home_ship = home_layout[r][c] if home_layout is not None else None
+                apply_cell_style(self.home_cells[r][c], home_ship, home_shot)

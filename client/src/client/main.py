@@ -41,13 +41,13 @@ def main() -> None:
     )
     parser.add_argument(
         "--dev-p2-fleet",
-        help="Bypass UI and set P2 fleet (Requires --p1-setup)",
+        help="Bypass UI and set P2 fleet (Requires --dev-p1-fleet)",
     )
 
     args, qt_args = parser.parse_known_args()
 
     if args.dev_p2_fleet and not args.dev_p1_fleet:
-        parser.error("--p2-setup requires --p1-setup")
+        parser.error("--dev-p2-fleet requires --dev-p1-fleet")
 
     log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(

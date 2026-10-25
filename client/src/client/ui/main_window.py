@@ -6,14 +6,13 @@ from PyQt6.QtWidgets import QMainWindow, QStackedWidget, QWidget
 
 from client.core.coordinates import format_coordinate, iter_coordinate_range
 from client.core.serial_worker import SerialWorker
-
-# Import the screens
+from client.ui.board_utils import create_empty_board
 from client.ui.constants import (
     PROTOCOL_SHIP_ORDER,
     Board,
     BoardStore,
-    _empty_board,
 )
+from client.ui.screens.game_over import GameOverScreen
 from client.ui.screens.gameplay import GameplayScreen
 from client.ui.screens.pass_device import PassDeviceScreen
 from client.ui.screens.setup import SetupScreen
@@ -47,6 +46,7 @@ class MainWindow(QMainWindow):
         self.setup_screen = SetupScreen()
         self.pass_screen = PassDeviceScreen()
         self.gameplay_screen = GameplayScreen()
+        self.game_over_screen = GameOverScreen()
 
         self.startup_screen.send_command.connect(self.serial_worker.send_command)
         self.setup_screen.send_command.connect(self.serial_worker.send_command)
@@ -55,11 +55,17 @@ class MainWindow(QMainWindow):
         self._post_pass_widget: QWidget | None = None
         self.pass_screen.ready.connect(self._complete_hotseat_transition)
         self.gameplay_screen.turn_ended.connect(self._gameplay_transition)
+        self.gameplay_screen.game_over.connect(self._show_game_over)
+        self.game_over_screen.play_again_requested.connect(self._start_new_game)
+        self.game_over_screen.main_menu_requested.connect(
+            lambda: self.stack.setCurrentWidget(self.startup_screen)
+        )
 
         self.stack.addWidget(self.startup_screen)
         self.stack.addWidget(self.setup_screen)
         self.stack.addWidget(self.pass_screen)
         self.stack.addWidget(self.gameplay_screen)
+        self.stack.addWidget(self.game_over_screen)
 
         self.serial_worker.start()
         self.serial_worker.send_command("CONNECT")
@@ -96,9 +102,13 @@ class MainWindow(QMainWindow):
             return
         if response == "OK: IN_PROGRESS":
             if self.use_setup_shortcut and self.dev_p1:
-                self.boards[1] = self._parse_debug_fleet(self.dev_p1)
-                if self.dev_p2:
-                    self.boards[2] = self._parse_debug_fleet(self.dev_p2)
+                try:
+                    self.boards[1] = self._parse_debug_fleet(self.dev_p1)
+                    if self.dev_p2:
+                        self.boards[2] = self._parse_debug_fleet(self.dev_p2)
+                except ValueError as error:
+                    logger.error("Invalid development fleet: %s", error)
+                    return
                 self.use_setup_shortcut = False
             else:
                 if not self.ai_mode:
@@ -107,8 +117,6 @@ class MainWindow(QMainWindow):
             self.gameplay_screen.prepare_for_turn(1)
             self.trigger_hotseat_transition(player=1, next_widget=self.gameplay_screen)
             return
-        if response.startswith("WIN:"):
-            pass
 
         current_widget = self.stack.currentWidget()
 
@@ -148,15 +156,28 @@ class MainWindow(QMainWindow):
             self.gameplay_screen.prepare_for_turn(player_id)
             self.trigger_hotseat_transition(player_id, self.gameplay_screen)
 
+    def _show_game_over(self, winner_id: int) -> None:
+        self.game_over_screen.set_results(
+            winner_id,
+            self.gameplay_screen.layouts,
+            self.gameplay_screen.shots,
+            ai_mode=self.ai_mode,
+        )
+        self.stack.setCurrentWidget(self.game_over_screen)
+
+    def _start_new_game(self) -> None:
+        self.boards.clear()
+        mode = "AI" if self.ai_mode else "PVP"
+        self.serial_worker.send_command(f"NEW: {mode}")  # Loops back through handler
+
     def _parse_debug_fleet(self, fleet_str: str) -> Board:
-        board: Board = _empty_board()
+        board: Board = create_empty_board()
         coords = fleet_str.split(",")
 
         expected_count = len(PROTOCOL_SHIP_ORDER) * 2
         if len(coords) != expected_count:
             raise ValueError(
-                f"Expected {expected_count} fleet coordinates, "
-                f"received {len(coords)}"
+                f"Expected {expected_count} fleet coordinates, received {len(coords)}"
             )
 
         for i, ship_id in enumerate(PROTOCOL_SHIP_ORDER):

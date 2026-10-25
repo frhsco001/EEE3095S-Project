@@ -25,11 +25,11 @@ from client.ui.constants import (
 
 logger = logging.getLogger(__name__)
 
+type ShipPlacement = tuple[int, int, int, int]
+
 
 class SetupScreen(QWidget):
     send_command = pyqtSignal(str)
-
-    type ShipPlacement = tuple[int, int, int, int]
 
     def __init__(self) -> None:
         super().__init__()
@@ -38,7 +38,7 @@ class SetupScreen(QWidget):
         self.player = 1
 
         # Game State
-        self.fleet_placed: dict[str, SetupScreen.ShipPlacement] = {}
+        self.fleet_placed: dict[str, ShipPlacement] = {}
         self.board_state: Board = [
             [None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)
         ]

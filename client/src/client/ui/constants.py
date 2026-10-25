@@ -28,7 +28,3 @@ COLOR_HIT = "#ff595e"
 
 type Board = list[list[str | None]]
 type BoardStore = dict[int, Board]
-
-
-def _empty_board() -> Board:
-    return [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
