@@ -42,10 +42,9 @@ typedef enum {
     SHIP_PATROL = 5      /**< 'P' (Length 2) */
 } ShipType;
 
-/**
- * @brief Lookup table for standard ship lengths, indexed by ShipType.
- */
 extern const uint8_t SHIP_LENGTHS[6];
+extern uint8_t p1_board[10][10];
+extern uint8_t p2_board[10][10];
 
 /**
  * @brief Tracks the runtime status of an individual ship during the game.
@@ -76,9 +75,9 @@ typedef enum {
  * @brief Return codes for an attempted ship placement during setup.
  */
 typedef enum {
-    PLACE_OK,             /**< Fleet placed successfully. */
-    PLACE_BAD_COORDS,     /**< Coordinates are out of bounds, diagonal, or do not match ship length. */
-    PLACE_OCCUPIED        /**< One or more target cells are already occupied by another ship. */
+    PLACE_OK,         /**< Fleet placed successfully. */
+    PLACE_BAD_COORDS, /**< Coordinates are out of bounds, diagonal, or do not match ship length. */
+    PLACE_OCCUPIED    /**< One or more target cells are already occupied by another ship. */
 } PlaceResult;
 
 /**

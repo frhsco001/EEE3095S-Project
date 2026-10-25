@@ -111,9 +111,9 @@ class MainWindow(QMainWindow):
                     return
                 self.use_setup_shortcut = False
             else:
-                if not self.ai_mode:
-                    self.boards[2] = self.setup_screen.get_board_state()
-            self.gameplay_screen.initialize_game(self.boards)
+                setup_player = 1 if self.ai_mode else 2
+                self.boards[setup_player] = self.setup_screen.get_board_state()
+            self.gameplay_screen.initialize_game(self.boards, ai_mode=self.ai_mode)
             self.gameplay_screen.prepare_for_turn(1)
             self.trigger_hotseat_transition(player=1, next_widget=self.gameplay_screen)
             return

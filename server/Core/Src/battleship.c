@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "ai.h"
 #include "protocol.h"
 
 const uint8_t SHIP_LENGTHS[6] = {0, 5, 4, 3, 3, 2};
@@ -76,8 +77,8 @@ static void FindShipCoords(uint8_t target_player, ShipType ship, uint8_t* x1, ui
     uint8_t (*board)[10] = target_player == 1 ? p1_board : p2_board;
     bool found_first = false;
 
-    for (uint8_t x = 0; x < 10; x++) {
-        for (uint8_t y = 0; y < 10; y++) {
+    for (uint8_t y = 0; y < 10; y++) {
+        for (uint8_t x = 0; x < 10; x++) {
             if ((board[x][y] & 0x7F) == ship) {
                 if (!found_first) {
                     *x1 = x;
@@ -211,7 +212,7 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                 case PLACE_OK:
                     if (current_turn == 1) {
                         if (current_mode == MODE_AI) {
-                            // AI_PlaceShips();
+                            AI_PlaceShips();
 
                             current_turn = 1;
                             current_state = STATE_IN_PROGRESS;
@@ -273,7 +274,6 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                 case SHOT_SUNK: {
                     uint8_t x1, y1, x2, y2;
                     FindShipCoords(other_player, sunk_ship, &x1, &y1, &x2, &y2);
-
                     Proto_SendShipResponse("SUNK: ", other_player, sunk_ship, x1, y1, x2, y2);
 
                     current_turn = current_turn == 1U ? 2U : 1U;
@@ -283,11 +283,50 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                 case SHOT_WIN: {
                     uint8_t x1, y1, x2, y2;
                     FindShipCoords(other_player, sunk_ship, &x1, &y1, &x2, &y2);
-
                     Proto_SendShipResponse("WIN: ", cmd->player, sunk_ship, x1, y1, x2, y2);
 
                     current_state = STATE_GAME_OVER;
                     break;
+                }
+            }
+            if (current_mode == MODE_AI && current_turn == 2 && current_state == STATE_IN_PROGRESS) {
+                uint8_t ai_x, ai_y;
+                AI_GenerateShot(&ai_x, &ai_y);
+
+                sunk_ship = SHIP_NONE;
+                shot_result = Game_Shoot(2, ai_x, ai_y, &sunk_ship);
+
+                switch (shot_result) {
+                    case SHOT_MISS:
+                        Proto_SendCellResponse("MISS: ", 1, ai_x, ai_y);
+                        current_turn = 1;
+                        break;
+
+                    case SHOT_HIT:
+                        Proto_SendCellResponse("HIT: ", 1, ai_x, ai_y);
+                        current_turn = 1;
+                        break;
+
+                    case SHOT_SUNK: {
+                        uint8_t x1, y1, x2, y2;
+                        FindShipCoords(1, sunk_ship, &x1, &y1, &x2, &y2);
+                        Proto_SendShipResponse("SUNK: ", 1, sunk_ship, x1, y1, x2, y2);
+                        
+                        current_turn = 1;
+                        break;
+                    }
+
+                    case SHOT_WIN: {
+                        uint8_t x1, y1, x2, y2;
+                        FindShipCoords(1, sunk_ship, &x1, &y1, &x2, &y2);
+                        Proto_SendShipResponse("WIN: ", 2, sunk_ship, x1, y1, x2, y2);
+
+                        current_state = STATE_GAME_OVER;
+                        break;
+                    }
+
+                    default:
+                        break;
                 }
             }
             break;

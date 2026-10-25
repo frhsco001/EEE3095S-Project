@@ -75,6 +75,7 @@ endif
 ######################################
 # C sources
 C_SOURCES =  \
+Core/Src/ai.c \
 Core/Src/battleship.c \
 Core/Src/main.c \
 Core/Src/protocol.c \
