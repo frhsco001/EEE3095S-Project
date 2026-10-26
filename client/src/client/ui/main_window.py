@@ -41,6 +41,7 @@ class MainWindow(QMainWindow):
         self.dev_p1 = dev_fleet_p1
         self.dev_p2 = dev_fleet_p2
         self.use_setup_shortcut = self.dev_p1 is not None
+        self.pending_winner = 0
 
         self.startup_screen = StartupScreen()
         self.setup_screen = SetupScreen()
@@ -104,9 +105,9 @@ class MainWindow(QMainWindow):
         if response == "OK: IN_PROGRESS":
             if self.use_setup_shortcut and self.dev_p1:
                 try:
-                    self.boards[1] = self._parse_debug_fleet(self.dev_p1)
+                    self.boards[1] = self._parse_fleet_coordinates(self.dev_p1)
                     if self.dev_p2:
-                        self.boards[2] = self._parse_debug_fleet(self.dev_p2)
+                        self.boards[2] = self._parse_fleet_coordinates(self.dev_p2)
                 except ValueError as error:
                     logger.error("Invalid development fleet: %s", error)
                     return
@@ -117,6 +118,23 @@ class MainWindow(QMainWindow):
             self.gameplay_screen.initialize_game(self.boards, ai_mode=self.ai_mode)
             self.gameplay_screen.prepare_for_turn(1)
             self.trigger_hotseat_transition(player=1, next_widget=self.gameplay_screen)
+            return
+        if response.startswith("STATUS:"):
+            if self.pending_winner is None:
+                logger.warning("Received unexpected STATUS response: %r", response)
+                return
+            try:
+                _, fleet_str = response.split(":", 1)[1].strip().split(",", 1)
+
+                self.gameplay_screen.layouts[2] = self._parse_fleet_coordinates(
+                    fleet_str
+                )
+                logger.debug("Successfully parsed AI board state.")
+
+            except (ValueError, IndexError) as error:
+                logger.error("Failed to parse STATUS response %r: %s", response, error)
+
+            self._render_game_over_screen()
             return
 
         current_widget = self.stack.currentWidget()
@@ -168,20 +186,33 @@ class MainWindow(QMainWindow):
             self.trigger_hotseat_transition(player_id, self.gameplay_screen)
 
     def _show_game_over(self, winner_id: int) -> None:
+        self.pending_winner = winner_id
+
+        if self.ai_mode:
+            logger.debug("Requesting AI board state...")
+            self.serial_worker.send_command("STATE: 2")
+        else:
+            self._render_game_over_screen()
+
+    def _render_game_over_screen(self) -> None:
+        if self.pending_winner is None:
+            logger.warning("Unexpected _render_game_over_screen call")
+            return
         self.game_over_screen.set_results(
-            winner_id,
+            self.pending_winner,
             self.gameplay_screen.layouts,
             self.gameplay_screen.shots,
             ai_mode=self.ai_mode,
         )
         self.stack.setCurrentWidget(self.game_over_screen)
+        self.pending_winner = None
 
     def _start_new_game(self) -> None:
         self.boards.clear()
         mode = "AI" if self.ai_mode else "PVP"
         self.serial_worker.send_command(f"NEW: {mode}")  # Loops back through handler
 
-    def _parse_debug_fleet(self, fleet_str: str) -> Board:
+    def _parse_fleet_coordinates(self, fleet_str: str) -> Board:
         board: Board = create_empty_board()
         coords = fleet_str.split(",")
 

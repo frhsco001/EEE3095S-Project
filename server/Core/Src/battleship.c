@@ -60,42 +60,6 @@ static uint8_t AppendCoord(char* buf, uint8_t index, uint8_t x, uint8_t y) {
 }
 
 /**
- * @brief Scans a player's board to find the start and end coordinates of a specific ship.
- *
- * Iterates through the 10x10 grid to locate all cells occupied by the specified ship type.
- * Since ships are placed orthogonally, the first and last matches during a sequential
- * scan represent the bounding coordinates of the ship.
- *
- * @param[in]  target_player The identifier of the player whose board is being scanned (1 or 2).
- * @param[in]  ship          The specific ShipType enum to search for.
- * @param[out] x1            Pointer to store the starting column coordinate (0-9).
- * @param[out] y1            Pointer to store the starting row coordinate (0-9).
- * @param[out] x2            Pointer to store the ending column coordinate (0-9).
- * @param[out] y2            Pointer to store the ending row coordinate (0-9).
- */
-static void FindShipCoords(uint8_t target_player, ShipType ship, uint8_t* x1, uint8_t* y1, uint8_t* x2, uint8_t* y2) {
-    uint8_t (*board)[10] = target_player == 1 ? p1_board : p2_board;
-    bool found_first = false;
-
-    for (uint8_t y = 0; y < 10; y++) {
-        for (uint8_t x = 0; x < 10; x++) {
-            if ((board[x][y] & 0x7F) == ship) {
-                if (!found_first) {
-                    *x1 = x;
-                    *y1 = y;
-                    *x2 = x;
-                    *y2 = y;
-                    found_first = true;
-                } else {
-                    *x2 = x;
-                    *y2 = y;
-                }
-            }
-        }
-    }
-}
-
-/**
  * @brief Formats and transmits a standard single-cell protocol response over UART.
  *
  * @param[in] prefix  Null-terminated prefix string to prepend (e.g., "HIT: " or "MISS: ").
@@ -152,6 +116,36 @@ static void Proto_SendShipResponse(const char* prefix, uint8_t player, ShipType 
 
     msg[len] = '\0';
 
+    Proto_SendResponse(msg);
+}
+
+/**
+ * @brief Formats and transmits the full board layout for a given player.
+ *
+ * Format: STATUS: <Player>,<C_Start>,<C_End>,<B_Start>,<B_End>,...
+ */
+static void Proto_SendStatusResponse(uint8_t player) {
+    char msg[64];
+    uint8_t len = 0;
+    const char* prefix = "STATUS: ";
+
+    while (prefix[len] != '\0') {
+        msg[len] = prefix[len];
+        len++;
+    }
+
+    msg[len++] = (char)('0' + player);
+
+    ShipState* fleet = (player == 1) ? p1_fleet : p2_fleet;
+
+    for (uint8_t i = 1; i <= 5; i++) {
+        msg[len++] = ',';
+        len = AppendCoord(msg, len, fleet[i].x1, fleet[i].y1);
+        msg[len++] = ',';
+        len = AppendCoord(msg, len, fleet[i].x2, fleet[i].y2);
+    }
+
+    msg[len] = '\0';
     Proto_SendResponse(msg);
 }
 
@@ -248,7 +242,7 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                 cmd->x,
                 cmd->y,
                 &sunk_ship);
-            uint8_t other_player = (cmd->player == 1) ? 2 : 1;
+            uint8_t other_player = (current_turn == 1) ? 2 : 1;
 
             switch (shot_result) {
                 case SHOT_BAD_COORDS:
@@ -272,18 +266,26 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                     break;
 
                 case SHOT_SUNK: {
-                    uint8_t x1, y1, x2, y2;
-                    FindShipCoords(other_player, sunk_ship, &x1, &y1, &x2, &y2);
-                    Proto_SendShipResponse("SUNK: ", other_player, sunk_ship, x1, y1, x2, y2);
+                    ShipState* sunk_state = (other_player == 1) ? &p1_fleet[sunk_ship] : &p2_fleet[sunk_ship];
+                    Proto_SendShipResponse(
+                        "SUNK: ",
+                        other_player,
+                        sunk_ship,
+                        sunk_state->x1, sunk_state->y1,
+                        sunk_state->x2, sunk_state->y2);
 
                     current_turn = current_turn == 1U ? 2U : 1U;
                     break;
                 }
 
                 case SHOT_WIN: {
-                    uint8_t x1, y1, x2, y2;
-                    FindShipCoords(other_player, sunk_ship, &x1, &y1, &x2, &y2);
-                    Proto_SendShipResponse("WIN: ", cmd->player, sunk_ship, x1, y1, x2, y2);
+                    ShipState* sunk_state = (other_player == 1) ? &p1_fleet[sunk_ship] : &p2_fleet[sunk_ship];
+                    Proto_SendShipResponse(
+                        "WIN: ",
+                        current_turn,
+                        sunk_ship,
+                        sunk_state->x1, sunk_state->y1,
+                        sunk_state->x2, sunk_state->y2);
 
                     current_state = STATE_GAME_OVER;
                     break;
@@ -308,18 +310,22 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                         break;
 
                     case SHOT_SUNK: {
-                        uint8_t x1, y1, x2, y2;
-                        FindShipCoords(1, sunk_ship, &x1, &y1, &x2, &y2);
-                        Proto_SendShipResponse("SUNK: ", 1, sunk_ship, x1, y1, x2, y2);
-                        
+                        ShipState* sunk_state = &p1_fleet[sunk_ship];
+                        Proto_SendShipResponse(
+                            "SUNK: ", 1, sunk_ship,
+                            sunk_state->x1, sunk_state->y1,
+                            sunk_state->x2, sunk_state->y2);
+
                         current_turn = 1;
                         break;
                     }
 
                     case SHOT_WIN: {
-                        uint8_t x1, y1, x2, y2;
-                        FindShipCoords(1, sunk_ship, &x1, &y1, &x2, &y2);
-                        Proto_SendShipResponse("WIN: ", 2, sunk_ship, x1, y1, x2, y2);
+                        ShipState* sunk_state = &p1_fleet[sunk_ship];
+                        Proto_SendShipResponse(
+                            "WIN: ", 2, sunk_ship,
+                            sunk_state->x1, sunk_state->y1,
+                            sunk_state->x2, sunk_state->y2);
 
                         current_state = STATE_GAME_OVER;
                         break;
@@ -343,6 +349,8 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                 current_state = STATE_SETUP;
                 current_mode = MODE_AI;
                 Proto_SendResponse("OK: NEW_AI");
+            } else if (cmd->type == CMD_STATE) {
+                Proto_SendStatusResponse(cmd->player);
             } else {
                 Proto_SendResponse("NACK: OUT_OF_STATE,GAME_OVER");
             }
@@ -397,8 +405,14 @@ PlaceResult Game_Place(uint8_t player, ShipCoords* fleet, ShipType* err_ship, Sh
 
     memcpy(board, temp_board, sizeof(temp_board));
 
-    for (int i = 1; i <= 5; i++) {
-        p_fleet[i].is_placed = true;
+    for (int i = 0; i < 5; i++) {
+        uint8_t ship_idx = i + 1;
+        p_fleet[ship_idx].is_placed = true;
+
+        p_fleet[ship_idx].x1 = fleet[i].x1;
+        p_fleet[ship_idx].y1 = fleet[i].y1;
+        p_fleet[ship_idx].x2 = fleet[i].x2;
+        p_fleet[ship_idx].y2 = fleet[i].y2;
     }
 
     return PLACE_OK;

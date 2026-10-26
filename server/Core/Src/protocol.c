@@ -49,8 +49,14 @@ bool Proto_ParseFrame(const char* frame, CommandStruct* cmd) {
     }
 
     // Handle STATE
-    if (strncmp(frame, "STATE", 5) == 0) {
+    if (strncmp(frame, "STATE: ", 7) == 0) {
+        if (strlen(frame) != 8) return false;
+
+        uint8_t player_id = frame[7] - '0';
+        if (player_id < 1 || player_id > 2) return false;
+
         cmd->type = CMD_STATE;
+        cmd->player = player_id;
         return true;
     }
 

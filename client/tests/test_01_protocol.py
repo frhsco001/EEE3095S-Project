@@ -71,6 +71,30 @@ class TestProtocol:
         assert send_command(stm32, command) == "NACK: BADCMD"
 
     # -----------------------------------------------------------------------
+    # STATE Command Parsing
+    # -----------------------------------------------------------------------
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "STATE",
+            "STATE:",
+            "STATE: ",
+            "STATE: 0",
+            "STATE: 3",
+            "STATE: X",
+            "STATE: 2extra",
+        ],
+    )
+    def test_rejects_invalid_state_commands(self, stm32, command):
+        """Malformed STATE commands must be rejected by the parser."""
+        assert send_command(stm32, command) == "NACK: BADCMD"
+
+    @pytest.mark.parametrize("player_id", [1, 2])
+    def test_accepts_valid_state_command_syntax(self, stm32, player_id: int) -> None:
+        assert send_command(stm32, f"STATE: {player_id}") == "NACK: NOGAME"
+
+    # -----------------------------------------------------------------------
     # FLEET Command Parsing
     # -----------------------------------------------------------------------
 

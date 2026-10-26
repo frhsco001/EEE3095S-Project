@@ -53,6 +53,8 @@ typedef struct {
     uint8_t length;     /**< Total size of the ship in cells. */
     uint8_t hits_taken; /**< Number of times this ship has been hit. */
     bool is_placed;     /**< True if the ship has been successfully locked onto the board. */
+    uint8_t x1, y1;     /**< Starting x and y coordinates. */
+    uint8_t x2, y2;     /**< Ending x and y coordinates. */
 } ShipState;
 
 extern GameState current_state;
