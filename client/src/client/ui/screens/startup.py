@@ -44,3 +44,7 @@ class StartupScreen(QWidget):
         self.btn_pvp.setEnabled(False)
         self.btn_ai.setEnabled(False)
         self.send_command.emit(f"NEW: {mode}")
+
+    def reset_buttons(self) -> None:
+        self.btn_pvp.setEnabled(True)
+        self.btn_ai.setEnabled(True)

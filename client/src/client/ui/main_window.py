@@ -57,9 +57,10 @@ class MainWindow(QMainWindow):
         self.gameplay_screen.turn_ended.connect(self._gameplay_transition)
         self.gameplay_screen.game_over.connect(self._show_game_over)
         self.game_over_screen.play_again_requested.connect(self._start_new_game)
-        self.game_over_screen.main_menu_requested.connect(
-            lambda: self.stack.setCurrentWidget(self.startup_screen)
-        )
+
+        self.setup_screen.main_menu_requested.connect(self._to_main_menu)
+        self.gameplay_screen.main_menu_requested.connect(self._to_main_menu)
+        self.game_over_screen.main_menu_requested.connect(self._to_main_menu)
 
         self.stack.addWidget(self.startup_screen)
         self.stack.addWidget(self.setup_screen)
@@ -131,6 +132,16 @@ class MainWindow(QMainWindow):
             response,
             type(current_widget).__name__,
         )
+
+    def _to_main_menu(self) -> None:
+        self.gameplay_screen.cancel_pending_transitions()
+        self.boards.clear()
+        self._post_pass_widget = None
+        self.ai_mode = False
+        self.startup_screen.reset_buttons()
+
+        self.serial_worker.send_command("CONNECT")
+        self.stack.setCurrentWidget(self.startup_screen)
 
     def trigger_hotseat_transition(self, player: int, next_widget: QWidget) -> None:
         """Displays the masking screen so players can swap seats."""

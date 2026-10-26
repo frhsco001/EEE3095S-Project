@@ -2,7 +2,14 @@ import logging
 from collections.abc import Iterable
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from client.core.coordinates import (
     Coordinate,
@@ -25,6 +32,7 @@ class GameplayScreen(QWidget):
     send_command = pyqtSignal(str)
     turn_ended = pyqtSignal(int)
     game_over = pyqtSignal(int)
+    main_menu_requested = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -33,6 +41,17 @@ class GameplayScreen(QWidget):
         self.shots: BoardStore = {}
         self.ai_mode = False
         self.last_result: str | None = None
+
+        self.turn_timer = QTimer(self)
+        self.turn_timer.setSingleShot(True)
+        self.turn_timer.timeout.connect(self._emit_pending_turn)
+
+        self.game_over_timer = QTimer(self)
+        self.game_over_timer.setSingleShot(True)
+        self.game_over_timer.timeout.connect(self._emit_pending_winner)
+
+        self.pending_next_player: int | None = None
+        self.pending_winner: int | None = None
 
         self._reset_game_state()
         self._setup_ui()
@@ -84,6 +103,20 @@ class GameplayScreen(QWidget):
         create_legend(main_layout)
         main_layout.addStretch()
 
+        bottom_layout = QHBoxLayout()
+        self.btn_main_menu = QPushButton("Quit to Main Menu")
+        self.btn_main_menu.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_main_menu.setStyleSheet(
+            "background-color: #F44336; color: white; font-weight: bold; "
+            "padding: 8px 16px; border-radius: 4px;"
+        )
+        self.btn_main_menu.clicked.connect(self._on_main_menu_clicked)
+
+        bottom_layout.addWidget(self.btn_main_menu)
+        bottom_layout.addStretch()
+
+        main_layout.addLayout(bottom_layout)
+
     def initialize_game(self, boards: BoardStore, *, ai_mode: bool) -> None:
         self._reset_game_state()
         self.layouts = {
@@ -102,6 +135,18 @@ class GameplayScreen(QWidget):
         self.log_label.setText(f"Player {player_id}: Select a target.")
         self._draw_boards()
 
+    def _on_main_menu_clicked(self) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Return to Main Menu",
+            "Are you sure you want to return to the main menu? "
+            "This will end the current game.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.main_menu_requested.emit()
+
     def _on_radar_click(self, row: int, column: int) -> None:
         if self.input_locked:
             return
@@ -112,6 +157,7 @@ class GameplayScreen(QWidget):
             return
 
         self.input_locked = True
+        self._draw_boards()
 
         coordinate = format_coordinate(row, column)
         self.send_command.emit(f"SHOOT: {self.active_player},{coordinate}")
@@ -170,9 +216,11 @@ class GameplayScreen(QWidget):
 
         return player_id, ship_id, cells
 
-    def _mark_sunk_ship(self, target_player: int, cells: Iterable[Coordinate]) -> None:
+    def _mark_sunk_ship(
+        self, target_player: int, ship_id: str, cells: Iterable[Coordinate]
+    ) -> None:
         for row, column in cells:
-            self.shots[target_player][row][column] = "SUNK"
+            self.shots[target_player][row][column] = f"SUNK:{ship_id}"
 
     def process_server_response(self, response: str) -> bool:
         if response.startswith("NACK:"):
@@ -230,7 +278,7 @@ class GameplayScreen(QWidget):
             self._handle_malformed_response(response, error)
             return True
 
-        self._mark_sunk_ship(target_player, cells)
+        self._mark_sunk_ship(target_player, ship_id, cells)
 
         ship_name = SHIP_CONFIG[ship_id].name
         shot_was_ours = target_player != self.active_player
@@ -250,13 +298,13 @@ class GameplayScreen(QWidget):
 
     def _process_win_response(self, response: str) -> bool:
         try:
-            winner_id, _ship_id, cells = self._parse_ship_response(response)
+            winner_id, ship_id, cells = self._parse_ship_response(response)
         except ValueError as error:
             self._handle_malformed_response(response, error)
             return True
 
         target_player = 2 if winner_id == 1 else 1
-        self._mark_sunk_ship(target_player, cells)
+        self._mark_sunk_ship(target_player, ship_id, cells)
 
         self.input_locked = True
         self.last_result = None
@@ -268,7 +316,7 @@ class GameplayScreen(QWidget):
 
         self._draw_boards()
 
-        QTimer.singleShot(1500, lambda: self.game_over.emit(winner_id))
+        self._schedule_game_over(winner_id)
         return True
 
     def _complete_shot_response(
@@ -284,6 +332,7 @@ class GameplayScreen(QWidget):
 
         if self.ai_mode:
             self.input_locked = False
+            self._draw_boards()
 
     def _handle_malformed_response(self, response: str, error: ValueError) -> None:
         logger.warning("Malformed gameplay response %r: %s", response, error)
@@ -304,19 +353,58 @@ class GameplayScreen(QWidget):
         self.last_result = None
 
     def _schedule_turn_end(self, next_player: int) -> None:
-        QTimer.singleShot(1500, lambda: self.turn_ended.emit(next_player))
+        self.pending_next_player = next_player
+        self.turn_timer.start(1500)
+
+    def _emit_pending_turn(self) -> None:
+        if self.pending_next_player is None:
+            return
+
+        next_player = self.pending_next_player
+        self.pending_next_player = None
+        self.turn_ended.emit(next_player)
+
+    def _schedule_game_over(self, winner_id: int) -> None:
+        self.pending_winner = winner_id
+        self.game_over_timer.start(1500)
+
+    def _emit_pending_winner(self) -> None:
+        if self.pending_winner is None:
+            return
+
+        winner_id = self.pending_winner
+        self.pending_winner = None
+        self.game_over.emit(winner_id)
+
+    def cancel_pending_transitions(self) -> None:
+        self.turn_timer.stop()
+        self.game_over_timer.stop()
+        self.pending_next_player = None
+        self.pending_winner = None
 
     def _draw_boards(self) -> None:
         target_player = 2 if self.active_player == 1 else 1
         home_layout = self.layouts.get(self.active_player)
 
+        radar_interactive = not self.input_locked
+
         for row in range(BOARD_SIZE):
             for column in range(BOARD_SIZE):
                 radar_shot = self.shots[target_player][row][column]
-                apply_cell_style(self.radar_cells[row][column], None, radar_shot)
+                apply_cell_style(
+                    self.radar_cells[row][column],
+                    None,
+                    radar_shot,
+                    interactive=radar_interactive,
+                )
 
                 home_shot = self.shots[self.active_player][row][column]
                 home_ship = (
                     home_layout[row][column] if home_layout is not None else None
                 )
-                apply_cell_style(self.home_cells[row][column], home_ship, home_shot)
+                apply_cell_style(
+                    self.home_cells[row][column],
+                    home_ship,
+                    home_shot,
+                    interactive=False,
+                )

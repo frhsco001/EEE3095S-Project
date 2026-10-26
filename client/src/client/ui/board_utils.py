@@ -121,7 +121,11 @@ def create_grid(
 
 
 def apply_cell_style(
-    widget: BoardCell, ship_id: str | None, shot_type: str | None
+    widget: BoardCell,
+    ship_id: str | None,
+    shot_type: str | None,
+    *,
+    interactive: bool = True,
 ) -> None:
     bg_color = COLOR_WATER
     border = "1px solid #172a3a"
@@ -140,13 +144,15 @@ def apply_cell_style(
         text_color = COLOR_HIT
         text = "X"
         border = f"2px solid {COLOR_HIT}"
-    elif shot_type == "SUNK":
+    elif shot_type is not None and shot_type.startswith("SUNK:"):
+        _, sunk_id = shot_type.split(":", maxsplit=1)
+        bg_color = SHIP_CONFIG[sunk_id].colour
         text_color = COLOR_HIT
         text = "S"
         border = f"2px solid {COLOR_HIT}"
 
     if isinstance(widget, QPushButton):
-        if shot_type is None:
+        if shot_type is None and interactive:
             hover_css = "QPushButton:hover { background-color: #2c5987; }"
             widget.setCursor(Qt.CursorShape.PointingHandCursor)
         else:

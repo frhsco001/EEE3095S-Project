@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -30,6 +31,7 @@ type ShipPlacement = tuple[int, int, int, int]
 
 class SetupScreen(QWidget):
     send_command = pyqtSignal(str)
+    main_menu_requested = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -46,6 +48,8 @@ class SetupScreen(QWidget):
         # Drag State
         self.dragging_ship: str | None = None
         self.drag_horizontal: bool = True
+        self.drag_original_placement: ShipPlacement | None = None
+
         self.current_hover_valid: bool = False
         self.current_hover_cells: list[tuple[int, int]] = []
         self.current_hover_origin: tuple[int, int] = (-1, -1)
@@ -53,11 +57,16 @@ class SetupScreen(QWidget):
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        main_layout = QHBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        main_layout.addStretch()
 
-        # Left Side: The 10x10 Grid
+        center_block = QHBoxLayout()
+        center_block.addStretch()
+
         left_panel = QVBoxLayout()
+
         self.status_label = QLabel("Player 1: Draft your fleet")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setStyleSheet(
             "font-size: 18px; font-weight: bold; margin-bottom: 10px;"
         )
@@ -65,17 +74,18 @@ class SetupScreen(QWidget):
 
         self.grid_container = QFrame()
         self.grid_container.setStyleSheet(
-            "background-color: #0b1a26; border-radius: 8px; padding: 10px;"
+            "QFrame { background-color: #0b1a26; border-radius: 8px; padding: 10px; }"
         )
         grid_layout = QGridLayout(self.grid_container)
         grid_layout.setSpacing(2)
 
         for col in range(BOARD_SIZE):
-            lbl = QLabel(chr(65 + col))  # A-J
+            lbl = QLabel(chr(65 + col))
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             grid_layout.addWidget(lbl, 0, col + 1)
+
         for row in range(BOARD_SIZE):
-            lbl = QLabel(str(row + 1))  # 1-10
+            lbl = QLabel(str(row + 1))
             lbl.setAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
@@ -88,22 +98,32 @@ class SetupScreen(QWidget):
             for c in range(BOARD_SIZE):
                 cell = QLabel()
                 cell.setFixedSize(CELL_SIZE, CELL_SIZE)
-                cell.setProperty("r", r)  # Store cell coordinates in the widget
+                cell.setProperty("r", r)
                 cell.setProperty("c", c)
+
+                cell.installEventFilter(self)
+
                 grid_layout.addWidget(cell, r + 1, c + 1)
                 row_cells.append(cell)
             self.cells.append(row_cells)
 
-        left_panel.addWidget(self.grid_container)
+        left_panel.addWidget(
+            self.grid_container, alignment=Qt.AlignmentFlag.AlignCenter
+        )
         left_panel.addStretch()
-        main_layout.addLayout(left_panel)
 
-        # Right Side: The Dock & Controls
+        center_block.addLayout(left_panel)
+
+        center_block.addSpacing(50)
+
         right_panel = QVBoxLayout()
         right_panel.setSpacing(15)
 
         dock_title = QLabel("Available Ships")
-        dock_title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        dock_title.setStyleSheet(
+            "font-size: 16px; font-weight: bold; margin-top: 10px;"
+        )
+        dock_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         right_panel.addWidget(dock_title)
 
         self.ship_labels: dict[str, QLabel] = {}
@@ -119,20 +139,25 @@ class SetupScreen(QWidget):
             """)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+            sp = lbl.sizePolicy()
+            sp.setRetainSizeWhenHidden(True)
+            lbl.setSizePolicy(sp)
 
-            # Install event filter so SetupScreen can catch clicks on these labels
             lbl.installEventFilter(self)
+
             self.ship_labels[ship_id] = lbl
             right_panel.addWidget(lbl)
 
-        # Dynamic Keybind Instruction Label (Hidden by default)
         self.instruction_label = QLabel("Press 'R' to Rotate\nRight-Click to Cancel")
         self.instruction_label.setStyleSheet("color: #00FF00; font-weight: bold;")
         self.instruction_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sp_inst = self.instruction_label.sizePolicy()
+        sp_inst.setRetainSizeWhenHidden(True)
+        self.instruction_label.setSizePolicy(sp_inst)
         self.instruction_label.hide()
         right_panel.addWidget(self.instruction_label)
 
-        right_panel.addStretch()
+        right_panel.addSpacing(20)
 
         self.btn_reset = QPushButton("Reset Board")
         self.btn_reset.clicked.connect(self.reset_board)
@@ -146,8 +171,27 @@ class SetupScreen(QWidget):
         self.btn_deploy.setEnabled(False)
         self.btn_deploy.clicked.connect(self.on_deploy_clicked)
         right_panel.addWidget(self.btn_deploy)
+        right_panel.addStretch()
 
-        main_layout.addLayout(right_panel)
+        center_block.addLayout(right_panel)
+        center_block.addStretch()
+
+        main_layout.addLayout(center_block)
+        main_layout.addStretch()
+
+        bottom_layout = QHBoxLayout()
+        self.btn_main_menu = QPushButton("Quit to Main Menu")
+        self.btn_main_menu.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_main_menu.setStyleSheet(
+            "background-color: #F44336; color: white; font-weight: bold; "
+            "padding: 8px 16px; border-radius: 4px;"
+        )
+        self.btn_main_menu.clicked.connect(self._on_main_menu_clicked)
+
+        bottom_layout.addWidget(self.btn_main_menu)
+        bottom_layout.addStretch()
+
+        main_layout.addLayout(bottom_layout)
 
         # The phantom ship which follows the cursor
         self.phantom = QLabel(self)
@@ -157,7 +201,19 @@ class SetupScreen(QWidget):
         effect.setOpacity(0.7)
         self.phantom.setGraphicsEffect(effect)
 
-        self.clear_highlights()  # Initialize cell colors
+        self.clear_highlights()
+
+    def _on_main_menu_clicked(self) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Return to Main Menu",
+            "Are you sure you want to return to the main menu? "
+            "This will end the current game.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.main_menu_requested.emit()
 
     def eventFilter(self, source: QObject | None, event) -> bool:  # pyright: ignore[reportIncompatibleMethodOverride]
         if (
@@ -166,17 +222,44 @@ class SetupScreen(QWidget):
         ):
             for ship_id, lbl in self.ship_labels.items():
                 if source == lbl and ship_id not in self.fleet_placed:
-                    self._start_drag(ship_id)
+                    self._start_drag(ship_id, from_grid=False)
                     return True
+
+            if isinstance(source, QLabel) and source.property("r") is not None:
+                r, c = source.property("r"), source.property("c")
+                ship_id = self.board_state[r][c]
+
+                if ship_id is not None and self.dragging_ship is None:
+                    self._start_drag(ship_id, from_grid=True)
+                    return True
+
         return super().eventFilter(source, event)
 
-    def _start_drag(self, ship_id: str) -> None:
+    def _start_drag(self, ship_id: str, from_grid: bool = False) -> None:
         self.dragging_ship = ship_id
-        self.drag_horizontal = True
-        self.ship_labels[ship_id].hide()
-        self.instruction_label.show()
 
-        # Keep receiving mouse events if the cursor leaves the setup widget.
+        if from_grid:
+            self.drag_original_placement = self.fleet_placed[ship_id]
+            start_r, start_c, end_r, end_c = self.drag_original_placement
+
+            self.drag_horizontal = start_r == end_r
+
+            del self.fleet_placed[ship_id]
+            min_r, max_r = min(start_r, end_r), max(start_r, end_r)
+            min_c, max_c = min(start_c, end_c), max(start_c, end_c)
+
+            for row in range(min_r, max_r + 1):
+                for column in range(min_c, max_c + 1):
+                    self.board_state[row][column] = None
+
+            self.btn_deploy.setEnabled(False)
+            self.clear_highlights()
+        else:
+            self.drag_original_placement = None
+            self.drag_horizontal = True
+            self.ship_labels[ship_id].hide()
+
+        self.instruction_label.show()
         self.setFocus(Qt.FocusReason.MouseFocusReason)
         self.grabMouse()
 
@@ -184,18 +267,30 @@ class SetupScreen(QWidget):
         self.phantom.show()
         self._update_phantom_position(QCursor.pos())
 
-    def _finish_drag(self, *, restore_ship: bool) -> None:
+    def _finish_drag(self, *, restore: bool) -> None:
         ship_id = self.dragging_ship
 
         self.releaseMouse()
         self.phantom.hide()
         self.instruction_label.hide()
 
-        if restore_ship and ship_id is not None:
-            self.ship_labels[ship_id].show()
+        if restore and ship_id is not None:
+            if self.drag_original_placement is not None:
+                start_r, start_c, end_r, end_c = self.drag_original_placement
+                self.fleet_placed[ship_id] = self.drag_original_placement
+
+                min_r, max_r = min(start_r, end_r), max(start_r, end_r)
+                min_c, max_c = min(start_c, end_c), max(start_c, end_c)
+
+                for r in range(min_r, max_r + 1):
+                    for c in range(min_c, max_c + 1):
+                        self.board_state[r][c] = ship_id
+            else:
+                self.ship_labels[ship_id].show()
 
         self.dragging_ship = None
         self.drag_horizontal = True
+        self.drag_original_placement = None
         self.current_hover_origin = (-1, -1)
         self.clear_highlights()
 
@@ -256,6 +351,11 @@ class SetupScreen(QWidget):
             else:
                 self.clear_highlights()
             event.accept()
+            return
+        if self.dragging_ship and event.key() == Qt.Key.Key_Escape:
+            self._finish_drag(restore=True)
+            event.accept()
+            return
         super().keyPressEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -283,7 +383,7 @@ class SetupScreen(QWidget):
             for row, col in self.current_hover_cells:
                 self.board_state[row][col] = ship_id
 
-        self._finish_drag(restore_ship=not should_place)
+        self._finish_drag(restore=not should_place)
         self.btn_deploy.setEnabled(len(self.fleet_placed) == FLEET_SIZE)
 
         event.accept()
@@ -332,6 +432,11 @@ class SetupScreen(QWidget):
                     f"background-color: {color}; border: 1px solid #172a3a;"
                 )
 
+                if occupant is not None:
+                    self.cells[r][c].setCursor(Qt.CursorShape.PointingHandCursor)
+                else:
+                    self.cells[r][c].setCursor(Qt.CursorShape.ArrowCursor)
+
         self.current_hover_cells = []
         self.current_hover_valid = False
 
@@ -344,7 +449,7 @@ class SetupScreen(QWidget):
 
     def reset_board(self) -> None:
         if self.dragging_ship is not None:
-            self._finish_drag(restore_ship=True)
+            self._finish_drag(restore=True)
 
         self.fleet_placed.clear()
         self.board_state = [
@@ -370,8 +475,6 @@ class SetupScreen(QWidget):
         if len(self.fleet_placed) != FLEET_SIZE:
             return
 
-        # Fleet command format: FLEET: <Player>,<C>,<B>,<D>,<S>,<P>
-        # Example: FLEET: 1,A1,A5,B1,B4,C1,C3,D1,D3,E1,E2
         parts = [f"FLEET: {self.player}"]
 
         for ship_id in PROTOCOL_SHIP_ORDER:
