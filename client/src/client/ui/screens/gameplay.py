@@ -2,7 +2,9 @@ import logging
 from collections.abc import Iterable
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
+    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -67,34 +69,72 @@ class GameplayScreen(QWidget):
 
         self.log_label = QLabel("Awaiting initialization...")
         self.log_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.log_label.setStyleSheet(
-            "font-size: 24px; font-weight: bold; margin-bottom: 10px;"
-        )
+        self.log_label.setStyleSheet("""
+            color: #00FFCC;
+            font-size: 20px;
+            font-weight: bold;
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin-bottom: 20px;
+            margin-top: 10px;
+        """)
         main_layout.addWidget(self.log_label)
 
         grids_layout = QHBoxLayout()
         grids_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         radar_panel = QVBoxLayout()
-        radar_title = QLabel("Target Radar")
+        radar_title = QLabel("TARGET RADAR")
         radar_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        radar_title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        radar_title.setStyleSheet("""
+            color: #FFFFFF;
+            font-size: 18px;
+            font-weight: bold;
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin-bottom: 5px;
+        """)
         radar_panel.addWidget(radar_title)
 
         self.radar_cells = create_grid(
             radar_panel, clickable=True, on_click=self._on_radar_click
         )
-        grids_layout.addLayout(radar_panel)
 
+        radar_item = radar_panel.itemAt(radar_panel.count() - 1)
+        assert radar_item is not None
+        radar_container = radar_item.widget()
+        assert radar_container is not None
+        radar_shadow = QGraphicsDropShadowEffect()
+        radar_shadow.setBlurRadius(20)
+        radar_shadow.setColor(QColor(0, 0, 0, 150))
+        radar_shadow.setOffset(0, 5)
+        radar_container.setGraphicsEffect(radar_shadow)
+
+        grids_layout.addLayout(radar_panel)
         grids_layout.addSpacing(60)
 
         home_panel = QVBoxLayout()
-        home_title = QLabel("Home Fleet")
+        home_title = QLabel("HOME FLEET")
         home_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        home_title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        home_title.setStyleSheet("""
+            color: #FFFFFF;
+            font-size: 18px;
+            font-weight: bold;
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin-bottom: 5px;
+        """)
         home_panel.addWidget(home_title)
 
         self.home_cells = create_grid(home_panel, clickable=False)
+
+        home_item = home_panel.itemAt(home_panel.count() - 1)
+        assert home_item is not None
+        home_container = home_item.widget()
+        assert home_container is not None
+        home_shadow = QGraphicsDropShadowEffect()
+        home_shadow.setBlurRadius(20)
+        home_shadow.setColor(QColor(0, 0, 0, 150))
+        home_shadow.setOffset(0, 5)
+        home_container.setGraphicsEffect(home_shadow)
+
         grids_layout.addLayout(home_panel)
 
         main_layout.addLayout(grids_layout)
@@ -104,12 +144,28 @@ class GameplayScreen(QWidget):
         main_layout.addStretch()
 
         bottom_layout = QHBoxLayout()
-        self.btn_main_menu = QPushButton("Quit to Main Menu")
+        self.btn_main_menu = QPushButton("ABORT TO MENU")
         self.btn_main_menu.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_main_menu.setStyleSheet(
-            "background-color: #F44336; color: white; font-weight: bold; "
-            "padding: 8px 16px; border-radius: 4px;"
-        )
+        self.btn_main_menu.setStyleSheet("""
+            QPushButton {
+                background-color: #3a1c1c;
+                color: #F44336;
+                font-weight: bold;
+                font-family: 'Consolas', 'Courier New', monospace;
+                padding: 8px 16px;
+                border: 2px solid #5a2c2c;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #5a2c2c;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #F44336;
+                color: #ffffff;
+                border: 2px solid #F44336;
+            }
+        """)
         self.btn_main_menu.clicked.connect(self._on_main_menu_clicked)
 
         bottom_layout.addWidget(self.btn_main_menu)

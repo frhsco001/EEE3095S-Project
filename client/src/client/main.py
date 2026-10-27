@@ -3,7 +3,6 @@ import logging
 import sys
 from importlib import resources
 
-from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import QApplication
 
 from client.ui.main_window import MainWindow
@@ -13,13 +12,6 @@ logger = logging.getLogger(__name__)
 
 def load_assets(app: QApplication) -> None:
     try:
-        font_path = str(
-            resources.files("client.assets.fonts").joinpath("RobotoMono-Regular.ttf")
-        )
-        font_id = QFontDatabase.addApplicationFont(font_path)
-        if font_id == -1:
-            logger.warning("Failed to load custom font: RobotoMono-Regular.ttf")
-
         qss_path = resources.files("client.assets").joinpath("style.qss")
         with qss_path.open("r", encoding="utf-8") as f:
             app.setStyleSheet(f.read())

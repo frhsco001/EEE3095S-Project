@@ -1,6 +1,7 @@
 import logging
 import queue
 import time
+from enum import StrEnum
 
 import serial
 import serial.tools.list_ports
@@ -9,12 +10,18 @@ from PyQt6.QtCore import QThread, pyqtSignal, pyqtSlot
 logger = logging.getLogger(__name__)
 
 
+class ConnectionState(StrEnum):
+    CONNECTING = "CONNECTING"
+    CONNECTED = "CONNECTED"
+    DISCONNECTED = "DISCONNECTED"
+    ERROR = "ERROR"
+
+
 class SerialWorker(QThread):
     """Manages non-blocking serial communication with the STM32."""
 
     message_received = pyqtSignal(str)
-    connection_status = pyqtSignal(bool, str)
-    error_occurred = pyqtSignal(str)
+    connection_state = pyqtSignal(str, str)
 
     def __init__(
         self,
@@ -70,27 +77,33 @@ class SerialWorker(QThread):
 
             except serial.SerialException as exc:
                 logger.error("Serial hardware error: %s", exc)
-                self.error_occurred.emit(f"Serial communication error: {exc}")
                 self._close_connection()
+                self.connection_state.emit(ConnectionState.ERROR, str(exc))
             except Exception as exc:
                 logger.exception("Unexpected error in serial thread: %s", exc)
-                self.error_occurred.emit(f"Unexpected error: {exc}")
 
             # Yield thread slice briefly to prevent 100% CPU core saturation
             time.sleep(0.005)
 
         self._close_connection()
+        self.connection_state.emit(ConnectionState.DISCONNECTED, "Disconnected")
 
     def _init_connection(self) -> bool:
         """Attempts to establish connection to specified or auto-detected port."""
+        self.connection_state.emit(
+            ConnectionState.CONNECTING, "Searching for device..."
+        )
         target_port = self.port or self._detect_port()
 
         if not target_port:
             logger.debug("No active serial port target detected.")
-            self.connection_status.emit(False, "No device detected")
+            self.connection_state.emit(ConnectionState.ERROR, "No device detected")
             return False
 
         try:
+            self.connection_state.emit(
+                ConnectionState.CONNECTING, f"Opening {target_port}..."
+            )
             logger.info("Connecting to %s at %d baud...", target_port, self.baudrate)
             self._serial = serial.Serial(
                 port=target_port,
@@ -98,13 +111,15 @@ class SerialWorker(QThread):
                 timeout=0.05,
                 write_timeout=0.5,
             )
-            self.connection_status.emit(True, target_port)
+            self.connection_state.emit(
+                ConnectionState.CONNECTED, f"Ready on {target_port}"
+            )
             logger.info("Serial connection established on %s", target_port)
             return True
         except serial.SerialException as exc:
             logger.warning("Failed to open %s: %s", target_port, exc)
-            self.connection_status.emit(False, str(exc))
             self._close_connection()
+            self.connection_state.emit(ConnectionState.ERROR, str(exc))
             return False
 
     def _detect_port(self) -> str | None:
@@ -146,4 +161,3 @@ class SerialWorker(QThread):
                 logger.error("Error closing serial handle: %s", exc)
             finally:
                 self._serial = None
-                self.connection_status.emit(False, "Disconnected")

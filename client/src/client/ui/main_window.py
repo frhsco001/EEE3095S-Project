@@ -64,6 +64,10 @@ class MainWindow(QMainWindow):
         self.gameplay_screen.main_menu_requested.connect(self._to_main_menu)
         self.game_over_screen.main_menu_requested.connect(self._to_main_menu)
 
+        self.serial_worker.connection_state.connect(
+            self.startup_screen.update_connection_state
+        )
+
         self.stack.addWidget(self.startup_screen)
         self.stack.addWidget(self.setup_screen)
         self.stack.addWidget(self.pass_screen)
@@ -147,8 +151,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "Session Reset",
-                "The hardware menu button was pressed.\n"
-                "The current session has ended.",
+                "The hardware menu button was pressed.\nThe current session has ended.",
             )
 
             self.hardware_reset_notice_active = False
@@ -175,6 +178,7 @@ class MainWindow(QMainWindow):
 
         self.gameplay_screen.cancel_pending_transitions()
         self.startup_screen.reset_buttons()
+        self.setup_screen.cancel_pending_interaction()
 
         self.stack.setCurrentWidget(self.startup_screen)
         self.serial_worker.send_command("CONNECT")

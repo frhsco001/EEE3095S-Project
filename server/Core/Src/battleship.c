@@ -167,6 +167,7 @@ void Game_ProcessCommand(CommandStruct* cmd) {
     if (cmd->type == CMD_CONNECT || cmd->type == CMD_DISCONNECT) {
         Game_ResetSession();
         Proto_SendResponse("OK");
+        Hardware_Sync();
         return;
     }
     switch (current_state) {

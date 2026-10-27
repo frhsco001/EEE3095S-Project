@@ -167,6 +167,7 @@ def apply_cell_style(
             font-weight: bold;
             font-size: 16px;
             border: {border};
+            border-radius: 8px;
         }}
         {hover_css}
     """)

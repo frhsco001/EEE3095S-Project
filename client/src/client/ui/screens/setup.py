@@ -1,9 +1,10 @@
 import logging
 
 from PyQt6.QtCore import QEvent, QObject, QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QCursor, QKeyEvent, QMouseEvent
+from PyQt6.QtGui import QColor, QCursor, QKeyEvent, QMouseEvent
 from PyQt6.QtWidgets import (
     QFrame,
+    QGraphicsDropShadowEffect,
     QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
@@ -15,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from client.core.coordinates import format_coordinate
+from client.ui.board_utils import create_empty_board
 from client.ui.constants import (
     BOARD_SIZE,
     CELL_SIZE,
@@ -37,13 +39,11 @@ class SetupScreen(QWidget):
         super().__init__()
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        self.player = 1
-
         # Game State
+        self.player = 1
         self.fleet_placed: dict[str, ShipPlacement] = {}
-        self.board_state: Board = [
-            [None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)
-        ]
+        self.board_state: Board = create_empty_board()
+        self.awaiting_validation = False
 
         # Drag State
         self.dragging_ship: str | None = None
@@ -67,21 +67,33 @@ class SetupScreen(QWidget):
 
         self.status_label = QLabel("Player 1: Draft your fleet")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setStyleSheet(
-            "font-size: 18px; font-weight: bold; margin-bottom: 10px;"
-        )
+        self.status_label.setStyleSheet("""
+            color: #00FFCC;
+            font-size: 18px;
+            font-weight: bold;
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin-bottom: 10px;
+        """)
         left_panel.addWidget(self.status_label)
 
         self.grid_container = QFrame()
         self.grid_container.setStyleSheet(
             "QFrame { background-color: #0b1a26; border-radius: 8px; padding: 10px; }"
         )
+
+        grid_shadow = QGraphicsDropShadowEffect()
+        grid_shadow.setBlurRadius(20)
+        grid_shadow.setColor(QColor(0, 0, 0, 150))
+        grid_shadow.setOffset(0, 5)
+        self.grid_container.setGraphicsEffect(grid_shadow)
+
         grid_layout = QGridLayout(self.grid_container)
         grid_layout.setSpacing(2)
 
         for col in range(BOARD_SIZE):
             lbl = QLabel(chr(65 + col))
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl.setStyleSheet("color: #FFFFFF; font-weight: bold;")
             grid_layout.addWidget(lbl, 0, col + 1)
 
         for row in range(BOARD_SIZE):
@@ -89,6 +101,7 @@ class SetupScreen(QWidget):
             lbl.setAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
+            lbl.setStyleSheet("color: #FFFFFF; font-weight: bold; padding-right: 5px;")
             grid_layout.addWidget(lbl, row + 1, 0)
 
         # Generate 10x10 Cell Array
@@ -113,16 +126,35 @@ class SetupScreen(QWidget):
         left_panel.addStretch()
 
         center_block.addLayout(left_panel)
-
         center_block.addSpacing(50)
 
-        right_panel = QVBoxLayout()
+        control_panel = QFrame()
+        control_panel.setStyleSheet("""
+            QFrame {
+                background-color: #0b1a26;
+                border: 2px solid #172a3a;
+                border-radius: 12px;
+            }
+        """)
+
+        panel_shadow = QGraphicsDropShadowEffect()
+        panel_shadow.setBlurRadius(25)
+        panel_shadow.setColor(QColor(0, 0, 0, 180))
+        panel_shadow.setOffset(0, 8)
+        control_panel.setGraphicsEffect(panel_shadow)
+
+        right_panel = QVBoxLayout(control_panel)
+        right_panel.setContentsMargins(20, 20, 20, 20)
         right_panel.setSpacing(15)
 
-        dock_title = QLabel("Available Ships")
-        dock_title.setStyleSheet(
-            "font-size: 16px; font-weight: bold; margin-top: 10px;"
-        )
+        dock_title = QLabel("AVAILABLE SHIPS")
+        dock_title.setStyleSheet("""
+            color: #FFFFFF;
+            font-size: 16px;
+            font-weight: bold;
+            font-family: 'Consolas', 'Courier New', monospace;
+            border: none;
+        """)
         dock_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         right_panel.addWidget(dock_title)
 
@@ -131,11 +163,17 @@ class SetupScreen(QWidget):
             lbl = QLabel(f"{data.name} ({data.length})")
             lbl.setFixedSize(140, CELL_SIZE)
             lbl.setStyleSheet(f"""
-                background-color: {data.colour};
-                color: white;
-                font-weight: bold;
-                border-radius: 4px;
-                border: 2px solid white;
+                QLabel {{
+                    background-color: {data.colour};
+                    color: white;
+                    font-weight: bold;
+                    font-family: 'Consolas', 'Courier New', monospace;
+                    border-radius: 4px;
+                    border: 2px solid #FFFFFF;
+                }}
+                QLabel:hover {{
+                    border: 2px solid #00FFCC;
+                }}
             """)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -149,7 +187,12 @@ class SetupScreen(QWidget):
             right_panel.addWidget(lbl)
 
         self.instruction_label = QLabel("Press 'R' to Rotate\nRight-Click to Cancel")
-        self.instruction_label.setStyleSheet("color: #00FF00; font-weight: bold;")
+        self.instruction_label.setStyleSheet("""
+            color: #FF9800;
+            font-weight: bold;
+            font-family: 'Consolas', 'Courier New', monospace;
+            border: none;
+        """)
         self.instruction_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sp_inst = self.instruction_label.sizePolicy()
         sp_inst.setRetainSizeWhenHidden(True)
@@ -157,35 +200,104 @@ class SetupScreen(QWidget):
         self.instruction_label.hide()
         right_panel.addWidget(self.instruction_label)
 
-        right_panel.addSpacing(20)
+        right_panel.addSpacing(10)
 
-        self.btn_reset = QPushButton("Reset Board")
+        btn_base_style = """
+            QPushButton {
+                font-weight: bold;
+                font-size: 14px;
+                font-family: 'Consolas', 'Courier New', monospace;
+                border-radius: 6px;
+                padding: 10px;
+            }
+        """
+
+        self.btn_reset = QPushButton("RESET BOARD")
+        self.btn_reset.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_reset.setStyleSheet(
+            btn_base_style
+            + """
+            QPushButton {
+                background-color: #132a40;
+                color: #FFFFFF;
+                border: 2px solid #1c3d5a;
+            }
+            QPushButton:hover {
+                background-color: #1c3d5a;
+                border: 2px solid #2b5c87;
+            }
+            QPushButton:pressed {
+                background-color: #00FFCC;
+                color: #0b1a26;
+                border: 2px solid #00FFCC;
+            }
+        """
+        )
         self.btn_reset.clicked.connect(self.reset_board)
         right_panel.addWidget(self.btn_reset)
 
-        self.btn_deploy = QPushButton("Deploy Fleet")
+        self.btn_deploy = QPushButton("DEPLOY FLEET")
         self.btn_deploy.setFixedSize(140, 50)
+        self.btn_deploy.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_deploy.setStyleSheet(
-            "background-color: #4CAF50; color: white; font-weight: bold;"
+            btn_base_style
+            + """
+            QPushButton {
+                background-color: #1a3320;
+                color: #4CAF50;
+                border: 2px solid #2e5939;
+            }
+            QPushButton:hover {
+                background-color: #2e5939;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #4CAF50;
+                color: #0b1a26;
+                border: 2px solid #4CAF50;
+            }
+            QPushButton:disabled {
+                background-color: #060e15;
+                color: #3b4e60;
+                border: 2px solid #0b1a26;
+            }
+        """
         )
         self.btn_deploy.setEnabled(False)
         self.btn_deploy.clicked.connect(self.on_deploy_clicked)
         right_panel.addWidget(self.btn_deploy)
+
         right_panel.addStretch()
 
-        center_block.addLayout(right_panel)
+        center_block.addWidget(control_panel)
         center_block.addStretch()
 
         main_layout.addLayout(center_block)
         main_layout.addStretch()
 
         bottom_layout = QHBoxLayout()
-        self.btn_main_menu = QPushButton("Quit to Main Menu")
+        self.btn_main_menu = QPushButton("ABORT TO MENU")
         self.btn_main_menu.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_main_menu.setStyleSheet(
-            "background-color: #F44336; color: white; font-weight: bold; "
-            "padding: 8px 16px; border-radius: 4px;"
-        )
+        self.btn_main_menu.setStyleSheet("""
+            QPushButton {
+                background-color: #3a1c1c;
+                color: #F44336;
+                font-weight: bold;
+                font-family: 'Consolas', 'Courier New', monospace;
+                padding: 8px 16px;
+                border: 2px solid #5a2c2c;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #5a2c2c;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #F44336;
+                color: #ffffff;
+                border: 2px solid #F44336;
+            }
+        """)
         self.btn_main_menu.clicked.connect(self._on_main_menu_clicked)
 
         bottom_layout.addWidget(self.btn_main_menu)
@@ -203,6 +315,41 @@ class SetupScreen(QWidget):
 
         self.clear_highlights()
 
+    def _set_setup_enabled(self, enabled: bool) -> None:
+        self.btn_reset.setEnabled(enabled)
+        self.btn_main_menu.setEnabled(enabled)
+
+        for ship_label in self.ship_labels.values():
+            ship_label.setEnabled(enabled)
+
+        for row in self.cells:
+            for cell in row:
+                cell.setEnabled(enabled)
+
+        if not enabled and self.dragging_ship is not None:
+            self._finish_drag(restore=True)
+
+        self.clear_highlights()
+
+    def _update_deploy_button(self) -> None:
+        enabled = not self.awaiting_validation and len(self.fleet_placed) == FLEET_SIZE
+
+        self.btn_deploy.setEnabled(enabled)
+        self.btn_deploy.setCursor(
+            Qt.CursorShape.PointingHandCursor if enabled else Qt.CursorShape.ArrowCursor
+        )
+
+    def _begin_validation(self) -> None:
+        self.awaiting_validation = True
+        self._set_setup_enabled(False)
+        self._update_deploy_button()
+        self._set_status("Validating fleet geometry with server...")
+
+    def _finish_validation(self) -> None:
+        self.awaiting_validation = False
+        self._set_setup_enabled(True)
+        self._update_deploy_button()
+
     def _on_main_menu_clicked(self) -> None:
         reply = QMessageBox.question(
             self,
@@ -215,9 +362,13 @@ class SetupScreen(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             self.main_menu_requested.emit()
 
-    def eventFilter(self, source: QObject | None, event) -> bool:  # pyright: ignore[reportIncompatibleMethodOverride]
+    def eventFilter(self, source: QObject | None, event: QEvent) -> bool:  # pyright: ignore[reportIncompatibleMethodOverride]
+        if self.awaiting_validation:
+            return super().eventFilter(source, event)
+
         if (
             event.type() == QEvent.Type.MouseButtonPress
+            and isinstance(event, QMouseEvent)
             and event.button() == Qt.MouseButton.LeftButton
         ):
             for ship_id, lbl in self.ship_labels.items():
@@ -252,7 +403,7 @@ class SetupScreen(QWidget):
                 for column in range(min_c, max_c + 1):
                     self.board_state[row][column] = None
 
-            self.btn_deploy.setEnabled(False)
+            self._update_deploy_button()
             self.clear_highlights()
         else:
             self.drag_original_placement = None
@@ -265,6 +416,7 @@ class SetupScreen(QWidget):
 
         self._update_phantom_size()
         self.phantom.show()
+        self.phantom.raise_()
         self._update_phantom_position(QCursor.pos())
 
     def _finish_drag(self, *, restore: bool) -> None:
@@ -293,6 +445,15 @@ class SetupScreen(QWidget):
         self.drag_original_placement = None
         self.current_hover_origin = (-1, -1)
         self.clear_highlights()
+        self.update()
+
+    def cancel_pending_interaction(self) -> None:
+        if self.dragging_ship is not None:
+            self._finish_drag(restore=True)
+
+        self.awaiting_validation = False
+        self._set_setup_enabled(True)
+        self._update_deploy_button()
 
     def _update_phantom_size(self) -> None:
         if not self.dragging_ship:
@@ -313,12 +474,13 @@ class SetupScreen(QWidget):
 
         self.phantom.setFixedSize(w, h)
         self.phantom.setStyleSheet(
-            f"background-color: {color}; border: 2px dashed white;"
+            f"background-color: {color}; border: 2px dashed white; border-radius: 4px;"
         )
 
     def _update_phantom_position(self, global_pos: QPoint) -> None:
         local_pos = self.mapFromGlobal(global_pos)
         self.phantom.move(local_pos.x() + 2, local_pos.y() + 2)
+        self.update()  # Fix phantom ghost trails
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
         if self.dragging_ship:
@@ -335,10 +497,10 @@ class SetupScreen(QWidget):
             else:
                 self.clear_highlights()
             event.accept()
+            return
         super().mouseMoveEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
-        """Intercepts the 'R' key to rotate the ship in mid-air."""
         if self.dragging_ship and event.key() == Qt.Key.Key_R:
             self.drag_horizontal = not self.drag_horizontal
             self._update_phantom_size()
@@ -365,6 +527,11 @@ class SetupScreen(QWidget):
             super().mouseReleaseEvent(event)
             return
 
+        if event.button() == Qt.MouseButton.RightButton:
+            self._finish_drag(restore=True)
+            event.accept()
+            return
+
         should_place = (
             event.button() == Qt.MouseButton.LeftButton
             and self.current_hover_valid
@@ -384,11 +551,11 @@ class SetupScreen(QWidget):
                 self.board_state[row][col] = ship_id
 
         self._finish_drag(restore=not should_place)
-        self.btn_deploy.setEnabled(len(self.fleet_placed) == FLEET_SIZE)
+        self._update_deploy_button()
 
         event.accept()
 
-    def _highlight_cells(self, r: int, c: int) -> None:
+    def _highlight_cells(self, row: int, column: int) -> None:
         if not self.dragging_ship:
             return
         self.clear_highlights()
@@ -398,28 +565,29 @@ class SetupScreen(QWidget):
         cells_to_paint = []
 
         for i in range(length):
-            rr = r if self.drag_horizontal else r + i
-            cc = c + i if self.drag_horizontal else c
+            candidate_row = row if self.drag_horizontal else row + i
+            candidate_col = column + i if self.drag_horizontal else column
 
-            if rr >= BOARD_SIZE or cc >= BOARD_SIZE:
+            if candidate_row >= BOARD_SIZE or candidate_col >= BOARD_SIZE:
                 valid = False
                 break
 
             # Check collision with already placed ships
-            if self.board_state[rr][cc] is not None:
+            if self.board_state[candidate_row][candidate_col] is not None:
                 valid = False
 
-            cells_to_paint.append((rr, cc))
+            cells_to_paint.append((candidate_row, candidate_col))
 
         color = "#4CAF50" if valid else "#F44336"  # Green or Red
-        for rr, cc in cells_to_paint:
-            self.cells[rr][cc].setStyleSheet(
+        for candidate_row, candidate_col in cells_to_paint:
+            self.cells[candidate_row][candidate_col].setStyleSheet(
                 f"background-color: {color}; border: 1px solid white;"
+                "border-radius: 4px;"
             )
 
         self.current_hover_valid = valid
         self.current_hover_cells = cells_to_paint
-        self.current_hover_origin = (r, c)
+        self.current_hover_origin = (row, column)
 
     def clear_highlights(self) -> None:
         for r in range(BOARD_SIZE):
@@ -430,6 +598,7 @@ class SetupScreen(QWidget):
                 )
                 self.cells[r][c].setStyleSheet(
                     f"background-color: {color}; border: 1px solid #172a3a;"
+                    "border-radius: 4px;"
                 )
 
                 if occupant is not None:
@@ -441,37 +610,45 @@ class SetupScreen(QWidget):
         self.current_hover_valid = False
 
     def _set_status(self, text: str, *, error: bool = False) -> None:
-        color = "#F44336" if error else "palette(text)"
+        color = "#F44336" if error else "#00FFCC"
         self.status_label.setText(text)
         self.status_label.setStyleSheet(
-            f"color: {color}; font-size: 18px; font-weight: bold; margin-bottom: 10px;"
+            f"color: {color}; font-size: 18px; font-weight: bold; "
+            f"font-family: 'Consolas', 'Courier New', monospace; margin-bottom: 10px;"
         )
 
     def reset_board(self) -> None:
         if self.dragging_ship is not None:
             self._finish_drag(restore=True)
 
+        self.awaiting_validation = False
         self.fleet_placed.clear()
-        self.board_state = [
-            [None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)
-        ]
+        self.board_state = create_empty_board()
 
         for lbl in self.ship_labels.values():
             lbl.show()
 
+        self._set_setup_enabled(True)
         self.clear_highlights()
-        self.btn_deploy.setEnabled(False)
+        self._update_deploy_button()
+
         self._set_status(f"Player {self.player}: Draft your fleet")
 
     def reset_for_player(self, player_id: int) -> None:
+        if player_id not in {1, 2}:
+            raise ValueError(f"Invalid player ID: {player_id}")
+
         self.player = player_id
         self.reset_board()
 
     def get_board_state(self) -> Board:
-        """Returns a deep copy of the current board state."""
+        """Returns an independent copy of the current board state."""
         return [row[:] for row in self.board_state]
 
     def on_deploy_clicked(self) -> None:
+        if self.awaiting_validation:
+            return
+
         if len(self.fleet_placed) != FLEET_SIZE:
             return
 
@@ -483,25 +660,22 @@ class SetupScreen(QWidget):
             parts.append(format_coordinate(start_row, start_column))
             parts.append(format_coordinate(end_row, end_column))
 
-        self.btn_deploy.setEnabled(False)
-        self.status_label.setText("Validating fleet geometry with server...")
-
+        self._begin_validation()
         self.send_command.emit(",".join(parts))
 
     def process_server_response(self, response: str) -> bool:
         if response.startswith("NACK: BADCOORDS"):
-            self.btn_deploy.setEnabled(True)
-            self._set_status("Rejected: invalid geometry.", error=True)
-            return True
+            message = "Rejected: invalid geometry."
+        elif response.startswith("NACK: OCCUPIED"):
+            message = "Rejected: ships intersect."
+        elif response.startswith("NACK: BADCMD"):
+            message = "Protocol error: malformed fleet command."
+        elif response.startswith("NACK:") and self.awaiting_validation:
+            reason = response.removeprefix("NACK:").strip()
+            message = f"Fleet rejected: {reason or 'unknown reason'}"
+        else:
+            return False
 
-        if response.startswith("NACK: OCCUPIED"):
-            self.btn_deploy.setEnabled(True)
-            self._set_status("Rejected: ships intersect.", error=True)
-            return True
-
-        if response.startswith("NACK: BADCMD"):
-            self.btn_deploy.setEnabled(True)
-            self._set_status("Protocol error: malformed fleet command.", error=True)
-            return True
-
-        return False
+        self._finish_validation()
+        self._set_status(message, error=True)
+        return True
