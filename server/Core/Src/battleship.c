@@ -360,6 +360,7 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                 current_mode = MODE_PVP;
                 Proto_SendResponse("OK: NEW_PVP");
             } else if (cmd->type == CMD_NEW_AI) {
+                SeedAIOnce();
                 Game_ClearBoards();
                 current_turn = 1;
                 current_state = STATE_SETUP;

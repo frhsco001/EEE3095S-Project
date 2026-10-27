@@ -260,5 +260,6 @@ class MainWindow(QMainWindow):
         return board
 
     def closeEvent(self, event: QCloseEvent) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
+        self.serial_worker.send_command("DISCONNECT")
         self.serial_worker.stop()
         super().closeEvent(event)
