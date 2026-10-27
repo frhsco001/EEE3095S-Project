@@ -13,6 +13,7 @@
 /* USER CODE BEGIN Includes */
 #include "protocol.h"
 #include "battleship.h"
+#include "ai.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/

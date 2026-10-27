@@ -94,8 +94,8 @@ bool Proto_ParseFrame(const char* frame, CommandStruct* cmd) {
             cmd->fleet[i].x2 = ptr[0] - 'A';
             cmd->fleet[i].y2 = atoi(&ptr[1]) - 1;
 
-            if (cmd->fleet[i].x1 > 9 || cmd->fleet[i].y1 > 9 ||
-                cmd->fleet[i].x2 > 9 || cmd->fleet[i].y2 > 9) {
+            if (cmd->fleet[i].x1 >= BOARD_SIZE || cmd->fleet[i].y1 >= BOARD_SIZE ||
+                cmd->fleet[i].x2 >= BOARD_SIZE || cmd->fleet[i].y2 >= BOARD_SIZE) {
                 return false;
             }
 

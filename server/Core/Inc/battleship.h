@@ -4,6 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define BOARD_SIZE 10
+#define SHIP_COUNT 5
+#define SHIP_STATE_COUNT (SHIP_COUNT + 1)
+
 /**
  * @brief Forward declaration of the command structure used by the parser.
  */
@@ -42,10 +46,6 @@ typedef enum {
     SHIP_PATROL = 5      /**< 'P' (Length 2) */
 } ShipType;
 
-extern const uint8_t SHIP_LENGTHS[6];
-extern uint8_t p1_board[10][10];
-extern uint8_t p2_board[10][10];
-
 /**
  * @brief Tracks the runtime status of an individual ship during the game.
  */
@@ -56,6 +56,16 @@ typedef struct {
     uint8_t x1, y1;     /**< Starting x and y coordinates. */
     uint8_t x2, y2;     /**< Ending x and y coordinates. */
 } ShipState;
+
+/**
+ * @brief Lookup table for standard ship lengths, indexed by ShipType.
+ */
+extern const uint8_t SHIP_LENGTHS[SHIP_STATE_COUNT];
+/** @brief Player board and fleet state. */
+extern uint8_t p1_board[BOARD_SIZE][BOARD_SIZE];
+extern ShipState p1_fleet[SHIP_STATE_COUNT];
+extern uint8_t p2_board[BOARD_SIZE][BOARD_SIZE];
+extern ShipState p2_fleet[SHIP_STATE_COUNT];
 
 extern GameState current_state;
 extern GameMode current_mode;

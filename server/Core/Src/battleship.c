@@ -5,17 +5,30 @@
 #include "ai.h"
 #include "protocol.h"
 
-const uint8_t SHIP_LENGTHS[6] = {0, 5, 4, 3, 3, 2};
+const uint8_t SHIP_LENGTHS[SHIP_STATE_COUNT] = {0, 5, 4, 3, 3, 2};
 
 GameState current_state = STATE_IDLE;
 GameMode current_mode = MODE_NONE;
 
 uint8_t current_turn = 1;
 
-uint8_t p1_board[10][10];
-ShipState p1_fleet[6];
-uint8_t p2_board[10][10];
-ShipState p2_fleet[6];
+uint8_t p1_board[BOARD_SIZE][BOARD_SIZE];
+ShipState p1_fleet[SHIP_STATE_COUNT];
+uint8_t p2_board[BOARD_SIZE][BOARD_SIZE];
+ShipState p2_fleet[SHIP_STATE_COUNT];
+
+static bool ai_seeded = false;
+
+static void SeedAIOnce(void) {
+    if (ai_seeded) {
+        return;
+    }
+
+    uint32_t seed = HAL_GetTick() ^ SysTick->VAL;
+
+    AI_Init(seed);
+    ai_seeded = true;
+}
 
 void Game_ResetSession() {
     current_state = STATE_IDLE;
@@ -30,7 +43,7 @@ void Game_ClearBoards() {
     memset(p2_board, 0, sizeof(p2_board));
     memset(p2_fleet, 0, sizeof(p2_fleet));
 
-    for (int i = 1; i <= 5; i++) {
+    for (int i = 1; i <= SHIP_COUNT; i++) {
         p1_fleet[i].length = SHIP_LENGTHS[i];
         p2_fleet[i].length = SHIP_LENGTHS[i];
     }
@@ -138,7 +151,7 @@ static void Proto_SendStatusResponse(uint8_t player) {
 
     ShipState* fleet = (player == 1) ? p1_fleet : p2_fleet;
 
-    for (uint8_t i = 1; i <= 5; i++) {
+    for (uint8_t i = 1; i <= SHIP_COUNT; i++) {
         msg[len++] = ',';
         len = AppendCoord(msg, len, fleet[i].x1, fleet[i].y1);
         msg[len++] = ',';
@@ -163,6 +176,7 @@ void Game_ProcessCommand(CommandStruct* cmd) {
                 current_mode = MODE_PVP;
                 Proto_SendResponse("OK: NEW_PVP");
             } else if (cmd->type == CMD_NEW_AI) {
+                SeedAIOnce();
                 Game_ClearBoards();
                 current_state = STATE_SETUP;
                 current_mode = MODE_AI;
@@ -359,10 +373,10 @@ void Game_ProcessCommand(CommandStruct* cmd) {
 }
 
 PlaceResult Game_Place(uint8_t player, ShipCoords* fleet, ShipType* err_ship, ShipType* err_overlap) {
-    uint8_t temp_board[10][10] = {0};  // Blank canvas for evaluation
+    uint8_t temp_board[BOARD_SIZE][BOARD_SIZE] = {0};  // Blank canvas for evaluation
 
     // Evaluate all 5 ships in memory first
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < SHIP_COUNT; i++) {
         ShipType ship_type = (ShipType)(i + 1);  // 1 to 5 (Carrier to Patrol)
         uint8_t x1 = fleet[i].x1, y1 = fleet[i].y1, x2 = fleet[i].x2, y2 = fleet[i].y2;
 
@@ -371,7 +385,9 @@ PlaceResult Game_Place(uint8_t player, ShipCoords* fleet, ShipType* err_ship, Sh
         }
 
         // Orthogonal and bounds check
-        if ((x1 != x2 && y1 != y2) || x1 > 9 || x2 > 9 || y1 > 9 || y2 > 9) {
+        if ((x1 != x2 && y1 != y2) ||
+            x1 >= BOARD_SIZE || x2 >= BOARD_SIZE ||
+            y1 >= BOARD_SIZE || y2 >= BOARD_SIZE) {
             return PLACE_BAD_COORDS;
         }
 
@@ -400,12 +416,12 @@ PlaceResult Game_Place(uint8_t player, ShipCoords* fleet, ShipType* err_ship, Sh
     }
 
     // The entire fleet is valid. Commit the transaction.
-    uint8_t (*board)[10] = player == 1 ? p1_board : p2_board;
+    uint8_t (*board)[BOARD_SIZE] = player == 1 ? p1_board : p2_board;
     ShipState* p_fleet = player == 1 ? p1_fleet : p2_fleet;
 
     memcpy(board, temp_board, sizeof(temp_board));
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < SHIP_COUNT; i++) {
         uint8_t ship_idx = i + 1;
         p_fleet[ship_idx].is_placed = true;
 
@@ -419,12 +435,12 @@ PlaceResult Game_Place(uint8_t player, ShipCoords* fleet, ShipType* err_ship, Sh
 }
 
 ShotResult Game_Shoot(uint8_t player, uint8_t x, uint8_t y, ShipType* sunk_ship) {
-    if (x > 9 || y > 9) {
+    if (x >= BOARD_SIZE || y >= BOARD_SIZE) {
         return SHOT_BAD_COORDS;
     }
 
     uint8_t target_player = (player == 1) ? 2 : 1;
-    uint8_t (*target_board)[10] = target_player == 1 ? p1_board : p2_board;
+    uint8_t (*target_board)[BOARD_SIZE] = target_player == 1 ? p1_board : p2_board;
     uint8_t target_cell = target_board[x][y];
 
     // cell has previously been fired on
@@ -450,7 +466,7 @@ ShotResult Game_Shoot(uint8_t player, uint8_t x, uint8_t y, ShipType* sunk_ship)
         *sunk_ship = hit_ship;
     }
 
-    for (uint8_t i = 1; i < 6; i++) {
+    for (uint8_t i = 1; i < SHIP_STATE_COUNT; i++) {
         if (fleet[i].hits_taken < fleet[i].length) {
             return SHOT_SUNK;
         }
