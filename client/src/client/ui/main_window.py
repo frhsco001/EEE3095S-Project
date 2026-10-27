@@ -2,7 +2,7 @@ import logging
 
 from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QCloseEvent
-from PyQt6.QtWidgets import QMainWindow, QStackedWidget, QWidget
+from PyQt6.QtWidgets import QMainWindow, QMessageBox, QStackedWidget, QWidget
 
 from client.core.coordinates import format_coordinate, iter_coordinate_range
 from client.core.serial_worker import SerialWorker
@@ -42,6 +42,7 @@ class MainWindow(QMainWindow):
         self.dev_p2 = dev_fleet_p2
         self.use_setup_shortcut = self.dev_p1 is not None
         self.pending_winner = 0
+        self.hardware_reset_notice_active = False
 
         self.startup_screen = StartupScreen()
         self.setup_screen = SetupScreen()
@@ -136,6 +137,21 @@ class MainWindow(QMainWindow):
 
             self._render_game_over_screen()
             return
+        if response == "EVENT: RESET":
+            if self.hardware_reset_notice_active:
+                return
+
+            self.hardware_reset_notice_active = True
+            self._to_main_menu()
+
+            QMessageBox.information(
+                self,
+                "Session Reset",
+                "The hardware menu button was pressed.\n"
+                "The current session has ended.",
+            )
+
+            self.hardware_reset_notice_active = False
 
         current_widget = self.stack.currentWidget()
 
@@ -152,14 +168,16 @@ class MainWindow(QMainWindow):
         )
 
     def _to_main_menu(self) -> None:
-        self.gameplay_screen.cancel_pending_transitions()
+        self.pending_winner = None
         self.boards.clear()
         self._post_pass_widget = None
         self.ai_mode = False
+
+        self.gameplay_screen.cancel_pending_transitions()
         self.startup_screen.reset_buttons()
 
-        self.serial_worker.send_command("CONNECT")
         self.stack.setCurrentWidget(self.startup_screen)
+        self.serial_worker.send_command("CONNECT")
 
     def trigger_hotseat_transition(self, player: int, next_widget: QWidget) -> None:
         """Displays the masking screen so players can swap seats."""

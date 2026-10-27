@@ -13,7 +13,7 @@
 /* USER CODE BEGIN Includes */
 #include "protocol.h"
 #include "battleship.h"
-#include "ai.h"
+#include "hardware.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -83,9 +83,9 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  Hardware_Init();
   Proto_Init(&huart1);
   HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -98,6 +98,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     now = HAL_GetTick();
+    Hardware_UpdateState(now);
     if (frame_ready) {
       CommandStruct cmd;
 
@@ -206,12 +207,33 @@ static void MX_USART1_UART_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, STATUS_RED_Pin|STATUS_GREEN_Pin|HEALTH_LED_1_Pin|HEALTH_LED_2_Pin
+                          |HEALTH_LED_3_Pin|HEALTH_LED_4_Pin|HEALTH_LED_5_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : MENU_BUTTON_Pin */
+  GPIO_InitStruct.Pin = MENU_BUTTON_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(MENU_BUTTON_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : STATUS_RED_Pin STATUS_GREEN_Pin HEALTH_LED_1_Pin HEALTH_LED_2_Pin
+                           HEALTH_LED_3_Pin HEALTH_LED_4_Pin HEALTH_LED_5_Pin */
+  GPIO_InitStruct.Pin = STATUS_RED_Pin|STATUS_GREEN_Pin|HEALTH_LED_1_Pin|HEALTH_LED_2_Pin
+                          |HEALTH_LED_3_Pin|HEALTH_LED_4_Pin|HEALTH_LED_5_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

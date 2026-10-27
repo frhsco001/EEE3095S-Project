@@ -4,6 +4,7 @@
 
 #include "ai.h"
 #include "protocol.h"
+#include "hardware.h"
 
 const uint8_t SHIP_LENGTHS[SHIP_STATE_COUNT] = {0, 5, 4, 3, 3, 2};
 
@@ -370,6 +371,8 @@ void Game_ProcessCommand(CommandStruct* cmd) {
             }
             break;
     }
+
+    Hardware_Sync();
 }
 
 PlaceResult Game_Place(uint8_t player, ShipCoords* fleet, ShipType* err_ship, ShipType* err_overlap) {

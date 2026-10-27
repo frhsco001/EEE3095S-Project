@@ -77,6 +77,7 @@ endif
 C_SOURCES =  \
 Core/Src/ai.c \
 Core/Src/battleship.c \
+Core/Src/hardware.c \
 Core/Src/main.c \
 Core/Src/protocol.c \
 Core/Src/stm32f0xx_hal_msp.c \
