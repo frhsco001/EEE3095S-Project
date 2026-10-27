@@ -1,0 +1,32 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+\begin{guidance}[Conclusion (5 marks)]
+Summarise \textbf{success} (which requirements you met, with evidence),
+\textbf{usefulness} (where this design would apply beyond the project),
+\textbf{limitations} (be honest: what does not work, or only works under
+conditions) and \textbf{possible improvements}. No new results here.
+\end{guidance}
+
+This paper presented the complete engineering realization of an authoritative serial game server and desktop client for Battleship, deployed on the STM32F051R8 ARM Cortex-M0 microcontroller. Every functional requirement specified in the course brief was satisfied in full, validated across 80 automated hardware-in-the-loop tests with 100\% pass rates on physical hardware. The system guarantees absolute server-side authority, strict state invariance under malformed or illegal commands, atomic two-phase fleet placement, deterministic turn alternation, and autonomous on-chip probability heatmap AI combat, accompanied by real-time hardware LED bar-graph and buzzer telemetry.
+
+\textbf{Usefulness.} The design paradigms established in this work generalize directly to mission-critical embedded systems and industrial distributed control applications:
+\begin{itemize}
+    \item \textbf{Defensive Serial Protocol Engineering}: The combination of newline delimiter synchronization, bounded memory assembly, inter-byte silence timeouts, and atomic multi-tiered parameter validation forms an adaptable template for SCADA, Modbus, and aerospace telemetry links operating across noisy channels.
+    \item \textbf{Authoritative State Machine Isolation}: Decoupling untrusted presentation layers from authoritative embedded logic mirrors modern financial transactional terminals, point-of-sale systems, and medical devices where the host PC cannot be trusted with critical state variables.
+    \item \textbf{Resource-Constrained Edge Intelligence}: The integer-only probability density search algorithm proves that heuristic computer intelligence can operate deterministically within tightly constrained microcontrollers without floating-point units or operating system runtimes.
+\end{itemize}
+
+\textbf{Limitations.} While fully functional and robust against communications anomalies, the current implementation exhibits several engineering constraints:
+\begin{enumerate}
+    \item \textbf{Point-to-Point Topology}: The architecture relies on a single full-duplex UART interface. In two-player mode, players must operate in a turn-based ``hotseat'' configuration sharing one client instance, rather than connecting separate independent physical consoles.
+    \item \textbf{Volatile Game State}: Current game variables and statistics reside strictly in SRAM; disconnecting the board or pressing the hardware reset button clears the active session without persisting match histories or high scores to non-volatile Flash memory.
+    \item \textbf{Baud Rate Fixity}: Communication is statically constrained to 115,200\,bps. Dynamic baud-rate negotiation or auto-baud detection is not supported.
+\end{enumerate}
+
+\textbf{Improvements.} Future extensions could further expand the embedded server's capabilities:
+\begin{enumerate}
+    \item \textbf{Dual-Client Networked Play}: Upgrading the physical communication layer to a multi-drop RS-485 bus or implementing a secondary UART channel would allow two independent physical desktop clients to connect concurrently, eliminating hotseat turn sharing while maintaining complete fog-of-war.
+    \item \textbf{Non-Volatile Flash Persistence}: Utilizing the STM32F051's internal Flash memory for EEPROM emulation to store lifetime win/loss tallies, match records, and leaderboard statistics across power cycles.
+    \item \textbf{Dynamic Turn Timers and Move Clocks}: Incorporating a countdown hardware timer (e.g.\ TIM2) to enforce a per-move time limit, penalizing stalled players with turn forfeiture to accelerate competitive match pace.
+\end{enumerate}

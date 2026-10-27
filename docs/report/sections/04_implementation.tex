@@ -1,0 +1,128 @@
+\section{Implementation}
+\label{sec:impl}
+
+\begin{guidance}[Implementation (15 marks)]
+Choose \textbf{3 to 5 short code excerpts} that were \textbf{not straightforward}
+to write, and explain each: what problem it solves, why you wrote it this way,
+and what would go wrong with the obvious alternative. Good candidates:
+receiving bytes in an interrupt and handing them to the main loop; the frame
+assembler with timeout and oversize handling; non-blocking button debounce;
+keeping the GUI responsive; separating unsolicited messages from replies.
+Keep each listing short (10--25 lines) and narrow enough for one column; trim
+comments and boilerplate, and say that you did. Do not paste whole files.
+\end{guidance}
+
+\subsection{Interrupt-Driven Frame Assembler and Inter-Byte Silence Timeout}
+Assembling asynchronous serial streams on microcontrollers without operating system services poses two key hazards: buffer overruns caused by oversized or garbage packets, and deadlocks caused by stalled transmissions. The naive solution of polling UART bytes with \texttt{HAL\_UART\_Receive()}~\cite{um1785} blocks the main thread, starving button debouncing and LED timing. Conversely, accumulating frames inside a fixed buffer without timing bounds risks corruption if a packet is truncated.
+
+Listing~\ref{lst:proto_rx} illustrates the two-tiered solution. Ingestion executes inside the UART receive complete interrupt callback (\texttt{USART1\_IRQHandler}), which passes incoming bytes to \texttt{Proto\_ProcessByte()}. Every ingested byte refreshes \texttt{last\_rx\_time} to the current millisecond tick (\texttt{HAL\_GetTick()}), establishing an inter-byte silence detector. If the buffer exceeds $\text{MAX\_FRAME\_LEN} - 1$ (63 bytes) before a newline arrives, the write index is reset immediately. Concurrently, the non-blocking main loop checks whether $\text{FRAME\_TIMEOUT} = 500\,\text{ms}$ has elapsed since the last byte; if true, any partial frame is safely purged.
+
+\begin{lstlisting}[language=C, caption={Interrupt ingestion and inter-byte timeout (\texttt{protocol.c}, \texttt{main.c}).}, label=lst:proto_rx]
+/* protocol.c - Ingest byte from UART ISR */
+void Proto_ProcessByte(uint8_t byte) {
+  last_rx_time = HAL_GetTick(); /* Refresh silence timestamp */
+  if (byte == '\r') return;
+  if (byte == '\n') {
+    rx_buffer[rx_index] = '\0';
+    frame_ready = 1; rx_index = 0; return;
+  }
+  if (rx_index < (MAX_FRAME_LEN - 1)) {
+    rx_buffer[rx_index++] = (char)byte;
+  } else { rx_index = 0; } /* Saturation flush */
+}
+/* main.c - Non-blocking silence timeout */
+if (rx_index > 0 && (now - last_rx_time > FRAME_TIMEOUT)) {
+  rx_index = 0; last_rx_time = now; /* Flush stalled fragment */
+}
+\end{lstlisting}
+
+\subsection{Transactional Two-Phase Commit for Fleet Deployment}
+In Battleship, a player deploys five multi-cell vessels simultaneously. Each vessel must satisfy strict geometric invariants: exact length ($5, 4, 3, 3, 2$), strict grid confinement ($x, y \in [0, 9]$), perfect orthogonality (no diagonals), and zero overlap with any other vessel. If validation were executed directly against the live game board, an error encountered on the fourth or fifth ship would leave the board in a corrupt, partially placed state requiring complex rollback logic.
+
+Listing~\ref{lst:atomic_place} implements a transactional two-phase commit pattern. The function allocates a clean temporary matrix (\texttt{temp\_board}) on the stack. All five vessels are geometrically validated, computed for length, and plotted into \texttt{temp\_board}. If any collision or boundary violation is detected, the function aborts immediately with an explicit error code (\texttt{PLACE\_BAD\_COORDS} or \texttt{PLACE\_OCCUPIED}), leaving the authoritative board untouched. Only once all five ships are completely verified is \texttt{temp\_board} committed to the live board via \texttt{memcpy()}.
+
+\begin{lstlisting}[language=C, caption={Atomic fleet placement validation (\texttt{battleship.c}).}, label=lst:atomic_place]
+PlaceResult Game_Place(uint8_t p, ShipCoords* f, ShipType* err_s, ShipType* err_o) {
+  uint8_t temp[BOARD_SIZE][BOARD_SIZE] = {0};
+  for (int i = 0; i < SHIP_COUNT; i++) {
+    ShipType type = (ShipType)(i + 1);
+    uint8_t x1 = f[i].x1, y1 = f[i].y1, x2 = f[i].x2, y2 = f[i].y2;
+    if ((x1 != x2 && y1 != y2) || x1 >= 10 || x2 >= 10 || y1 >= 10 || y2 >= 10)
+      return PLACE_BAD_COORDS;
+    uint8_t min_x = (x1 < x2) ? x1 : x2, max_x = (x1 > x2) ? x1 : x2;
+    uint8_t min_y = (y1 < y2) ? y1 : y2, max_y = (y1 > y2) ? y1 : y2;
+    if (((max_x - min_x) + (max_y - min_y) + 1) != SHIP_LENGTHS[type])
+      return PLACE_BAD_COORDS;
+    for (uint8_t x = min_x; x <= max_x; x++) {
+      for (uint8_t y = min_y; y <= max_y; y++) {
+        if (temp[x][y] != SHIP_NONE) return PLACE_OCCUPIED;
+        temp[x][y] = type;
+      }
+    }
+  }
+  memcpy(p == 1 ? p1_board : p2_board, temp, sizeof(temp)); /* Atomic commit */
+  return PLACE_OK;
+}
+\end{lstlisting}
+
+\subsection{Cortex-M0 Heatmap AI Probability Engine}
+Implementing a competitive Battleship AI on an ARM Cortex-M0 microcontroller (STM32F051R8) presents acute computational challenges: the chip has only 8\,KB of SRAM, operates at 48\,MHz, and lacks a hardware floating-point unit (FPU)~\cite{rm0091}. A standard tree search (Minimax) would immediately exhaust available memory. Conversely, random targeting produces an unconvincing and trivial opponent.
+
+Listing~\ref{lst:ai_heatmap} resolves this by computing an integer probability density heatmap directly in internal memory. For every surviving ship, the algorithm iterates over all legal horizontal and vertical placements. If a placement covers cells that were already hit on an unsunk ship, the placement score is boosted heavily ($+50$). Candidate scores are accumulated into \texttt{heatmap[10][10]}. When in hunting mode (no active unsunk hits), dynamic parity filtering (\texttt{(x + y) \% min\_alive\_len == 0}) zeroes out sub-grid cells, ensuring the AI never fires into gaps smaller than the shortest surviving enemy vessel.
+
+\begin{lstlisting}[language=C, caption={Integer heatmap probability generator (\texttt{ai.c}).}, label=lst:ai_heatmap]
+/* Scan legal configurations for all surviving vessels */
+for (uint8_t s = 1; s <= SHIP_COUNT; s++) {
+  if (p1_fleet[s].hits_taken >= p1_fleet[s].length) continue;
+  uint8_t len = SHIP_LENGTHS[s];
+  for (uint8_t y = 0; y < 10; y++) {
+    for (uint8_t x = 0; x <= 10 - len; x++) {
+      bool valid = true; uint16_t score = 1;
+      for (uint8_t i = 0; i < len; i++) {
+        uint8_t c = p1_board[x + i][y];
+        if (c & 0x80) { /* Targeted cell */
+          uint8_t sh = c & 0x7F;
+          if (sh == SHIP_NONE || p1_fleet[sh].hits_taken >= p1_fleet[sh].length) {
+            valid = false; break;
+          }
+          score += 50; /* Prioritize wounded ship trace */
+        }
+      }
+      if (valid) {
+        for (uint8_t i = 0; i < len; i++)
+          if (!(p1_board[x+i][y] & 0x80)) heatmap[x+i][y] += score;
+      }
+    }
+  }
+}
+if (!has_active_hits && ((x + y) % min_alive_len != 0)) heatmap[x][y] = 0;
+\end{lstlisting}
+
+\subsection{Asynchronous Thread-Decoupled Serial Worker}
+On the client side, maintaining a thin architecture requires continuous serial communication without degrading UI fluidity. In PyQt6, invoking blocking I/O calls (such as \texttt{serial.Serial.readline()}) on the main GUI thread causes the Windows message pump to stall, leading to visible stutter and OS ``Not Responding'' freezes.
+
+Listing~\ref{lst:pyqt_worker} presents the concurrency solution implemented in \texttt{SerialWorker}. Subclassing \texttt{QThread}, the worker decouples hardware communication from the main thread. Outbound commands are pushed to a thread-safe FIFO queue (\texttt{\_tx\_queue.put()}) and drained inside the background loop. Inbound lines are parsed non-blockingly and dispatched to the GUI thread via the Qt signal \texttt{message\_received.emit(line)}. A brief 5\,ms sleep prevents CPU core saturation while guaranteeing sub-10\,ms command dispatch latency.
+
+\begin{lstlisting}[language=Python, caption={Thread-decoupled serial worker (\texttt{serial\_worker.py}).}, label=lst:pyqt_worker]
+class SerialWorker(QThread):
+  message_received = pyqtSignal(str)
+  def __init__(self, port=None, baud=115200):
+    super().__init__()
+    self._tx_queue, self._serial, self._running = queue.Queue(), None, False
+
+  def send_command(self, cmd: str) -> None:
+    self._tx_queue.put(cmd)
+
+  def run(self) -> None:
+    self._running = True
+    while self._running:
+      if not self._serial or not self._serial.is_open:
+        if not self._init_connection(): time.sleep(1.0); continue
+      while not self._tx_queue.empty():
+        cmd = self._tx_queue.get_nowait().strip()
+        self._serial.write(f"{cmd}\n".encode()); self._serial.flush()
+      if self._serial.in_waiting > 0:
+        line = self._serial.readline().decode("utf-8", "replace").strip()
+        if line: self.message_received.emit(line)
+      time.sleep(0.005) # Prevent CPU saturation
+\end{lstlisting}

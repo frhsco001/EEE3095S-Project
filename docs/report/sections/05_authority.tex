@@ -1,0 +1,99 @@
+\section{Game Logic and Server Authority}
+\label{sec:authority}
+
+\begin{guidance}[Game logic and server authority (15 marks)]
+Show: correct \textbf{move validation}; rejection of \textbf{illegal,
+out-of-turn and out-of-state} moves with specific errors; reliable
+\textbf{win and draw detection}; and a \textbf{client-untrusted} design. Most
+importantly, give an argument that a \textbf{rejected request cannot change the
+server state}, based on how your code is structured (e.g. every check runs
+before the first write), and point to the tests that check it. The brief calls
+this a ``proof''; make it a step-by-step argument a reader can verify against
+your code.
+\end{guidance}
+
+\subsection{Move and Shot Validation Pipeline}
+In the authoritative architecture, the microcontroller evaluates all combat actions through a strict, multi-tiered validation pipeline implemented in \texttt{Game\_ProcessCommand()} and \texttt{Game\_Shoot()} (\texttt{battleship.c}):
+\begin{enumerate}
+    \item \textbf{Syntactic and Type Validation}: \texttt{Proto\_ParseFrame()} verifies that the command string conforms strictly to \texttt{SHOOT: <p>,<Col><Row>}. Player IDs outside $\{1, 2\}$, column characters outside $[\text{A}, \text{J}]$, or row values outside $[1, 10]$ fail instantly, returning \texttt{NACK: BADCMD}.
+    \item \textbf{FSM State Feasibility}: The server verifies that \texttt{current\_state == STATE\_IN\_PROGRESS}. Any shot submitted during \texttt{STATE\_IDLE}, \texttt{STATE\_SETUP}, or \texttt{STATE\_GAME\_OVER} is intercepted and rejected with \texttt{NACK: NOGAME} or \texttt{NACK: OUT\_OF\_STATE,<state>}.
+    \item \textbf{Turn Authority}: The requesting player ID is evaluated against the internal tracker (\texttt{cmd->player == current\_turn}). Out-of-turn requests are rejected with \texttt{NACK: NOTURN}.
+    \item \textbf{Boundary Confinement}: Inside \texttt{Game\_Shoot()}, target coordinates are checked against the grid dimension:
+    \begin{equation}
+    x \ge \text{BOARD\_SIZE} \quad \lor \quad y \ge \text{BOARD\_SIZE} \implies \texttt{SHOT\_BAD\_COORDS}
+    \end{equation}
+    yielding \texttt{NACK: BADCOORDS}.
+    \item \textbf{History and Repeat Guard}: The target cell on the opponent's authoritative grid is inspected. If bit $0\text{x}80$ is already set, the cell was previously targeted; the server returns \texttt{SHOT\_REPEAT} ($\to$ \texttt{NACK: REPEAT}) without penalizing or advancing the player's turn.
+\end{enumerate}
+
+\subsection{Step-by-Step Proof of State Invariance Under Error}
+A foundational requirement of the brief is that any illegal, malformed, or out-of-turn request must leave the server's internal state completely unmodified. The system guarantees this invariant by structural construction: \textbf{all guards strictly precede state mutation}. 
+
+Let the server state be formally defined as the tuple:
+\begin{equation}
+S = \langle \mathcal{B}_1, \mathcal{B}_2, \mathcal{F}_1, \mathcal{F}_2, \tau, \sigma \rangle
+\end{equation}
+where $\mathcal{B}_p \in \{0\text{x}00\ldots0\text{x}85\}^{10 \times 10}$ represents Player $p$'s grid, $\mathcal{F}_p$ represents the fleet damage structures, $\tau \in \{1, 2\}$ denotes \texttt{current\_turn}, and $\sigma \in \{\text{IDLE}, \text{SETUP}, \text{IN\_PROGRESS}, \text{GAME\_OVER}\}$ represents \texttt{current\_state}.
+
+We prove that for any invalid transition request $R_{\text{err}}$, $S_{t+1} = S_t$:
+\begin{itemize}
+    \item \textbf{Framing and Syntax Rejections}: In \texttt{main.c}, when \texttt{Proto\_ParseFrame()} evaluates to false, the server executes \texttt{Proto\_SendResponse("NACK: BADCMD")} and resets \texttt{frame\_ready = 0}. The dispatch routine \texttt{Game\_ProcessCommand()} is never invoked. Hence, $\Delta S = \emptyset$. Verified by automated test \texttt{test\_malformed\_command\_rejection}.
+    \item \textbf{Out-of-State Rejections}: In \texttt{Game\_ProcessCommand()}, state dispatch is governed by a \texttt{switch (current\_state)} block. If a command type is invalid for the active state (e.g.\ \texttt{cmd->type != CMD\_SHOOT} in \texttt{STATE\_IN\_PROGRESS}), the handler emits an explicit NACK and executes \texttt{break}. No assignments to $\mathcal{B}$, $\mathcal{F}$, $\tau$, or $\sigma$ occur. Verified by \texttt{test\_place\_command\_rejected\_during\_gameplay}.
+    \item \textbf{Out-of-Turn Rejections}: Before invoking any combat logic, the turn guard checks:
+    \begin{lstlisting}[language=C]
+    if (cmd->player != current_turn) {
+      Proto_SendResponse("NACK: NOTURN");
+      break;
+    }
+    \end{lstlisting}
+    Since this guard exits before \texttt{Game\_Shoot()} is reached, $\tau$ remains unchanged, no cells are marked, and damage counters are untouched. Verified by \texttt{test\_player\_two\_cannot\_shoot\_first}.
+    \item \textbf{Fleet Placement Invariance}: In \texttt{Game\_Place()} (Listing~\ref{lst:atomic_place}), fleet evaluations are performed exclusively on the stack-allocated array \texttt{temp}. If any ship is off-grid, non-orthogonal, improper length, or overlaps an existing vessel, the function exits with \texttt{PLACE\_BAD\_COORDS} or \texttt{PLACE\_OCCUPIED}. The live board $\mathcal{B}_p$ is written solely via \texttt{memcpy()} at the very end of the routine, guaranteeing that a failed 5th ship cannot leave ships 1--4 on the board. Verified by \texttt{test\_failed\_atomic\_placement\_leaves\_board\_empty}.
+    \item \textbf{Repeat Shot Invariance}: In \texttt{Game\_Shoot()}, the repeat test (\texttt{target\_cell \& 0x80}) precedes cell mutation (\texttt{target\_board[x][y] |= 0x80}). Upon detecting a repeat shot, the function returns \texttt{SHOT\_REPEAT} immediately. In the caller, \texttt{current\_turn} is not toggled, preserving $\tau = \tau_t$. Verified by \texttt{test\_repeat\_shot\_rejected\_and\_retains\_turn}.
+\end{itemize}
+Thus, every error path is structurally incapable of causing state mutations.
+
+\subsection{Turn Sequencing and Out-of-Turn Locking}
+Turn tracking is owned strictly by the microcontroller via the global variable \texttt{current\_turn}. In \texttt{STATE\_SETUP}, \texttt{current\_turn} initialises to 1. In two-player mode, receiving a valid Player~1 fleet advances \texttt{current\_turn = 2}; receiving Player~2's fleet sets \texttt{current\_turn = 1} and enters \texttt{STATE\_IN\_PROGRESS}. In AI mode, Player~1 fleet placement automatically deploys the AI fleet and sets \texttt{current\_turn = 1}.
+
+During active combat, turns toggle deterministically upon the completion of a valid shot:
+\begin{lstlisting}[language=C]
+current_turn = (current_turn == 1U) ? 2U : 1U;
+\end{lstlisting}
+Critically, this assignment is executed \textit{only} inside the successful \texttt{SHOT\_MISS}, \texttt{SHOT\_HIT}, and \texttt{SHOT\_SUNK} branches. If an action fails validation or encounters an already fired cell, the turn toggle is bypassed. When in AI mode, after Player~1 completes a valid shot, the microcontroller immediately invokes \texttt{AI\_GenerateShot()}, executes the AI shot on Player~1's board, and resets \texttt{current\_turn = 1}, preserving seamless turn flow.
+
+\subsection{Win Detection and Terminal State Locking}
+Win detection is evaluated cumulatively at the conclusion of every successful hit. Each ship in \texttt{p1\_fleet} and \texttt{p2\_fleet} maintains its structural metadata:
+\begin{lstlisting}[language=C]
+typedef struct {
+  uint8_t length;
+  uint8_t hits_taken;
+  bool is_placed;
+  uint8_t x1, y1, x2, y2;
+} ShipState;
+\end{lstlisting}
+When a shot intersects a ship cell, the targeted ship's damage counter increments:
+\begin{equation}
+\text{hits\_taken} \leftarrow \text{hits\_taken} + 1
+\end{equation}
+The server then executes a two-stage terminal evaluation:
+\begin{enumerate}
+    \item \textbf{Sinking Check}: If $\text{hits\_taken} = \text{length}$, the vessel is destroyed. The server extracts the ship's cached start and end coordinates, emitting \texttt{SUNK: <opp>,<ship>,<x1,y1>,<x2,y2>}.
+    \item \textbf{Fleet Annihilation Check}: The server iterates over all ships $i \in [1, 5]$ in the victim's fleet:
+    \begin{equation}
+    \forall i \in \{1,\ldots,5\}: \text{hits\_taken}_i = \text{length}_i \implies \texttt{SHOT\_WIN}
+    \end{equation}
+    If all 5 ships have been sunk, the server emits \texttt{WIN: <winner>,<ship>,<x1,y1>,<x2,y2>}, updates the status LEDs to blinking mode, and transitions \texttt{current\_state = STATE\_GAME\_OVER}.
+\end{enumerate}
+
+Once in \texttt{STATE\_GAME\_OVER}, combat is permanently locked: any further \texttt{SHOOT} command fails the state check and returns \texttt{NACK: OUT\_OF\_STATE,GAME\_OVER}. In standard Battleship, 17 ship segments reside across 100 cells; since play is sequential, one player's fleet is inevitably annihilated first, rendering a tie (\texttt{DRAW}) mathematically impossible.
+
+\subsection{Client-Untrusted Design and Information Secrecy}
+In adherence to the core specification, the PC client possesses zero game logic, zero rule validation algorithms, and zero knowledge of the opponent's fleet layout. 
+
+If the client were trusted to calculate hits, an adversary could inspect the PC's memory space, modify client code to display enemy ships, or spoof shot results. By centralizing the referee role on the STM32, the physical microcontroller boundary enforces \textbf{perfect information hiding}:
+\begin{itemize}
+    \item During setup and combat, the STM32 never transmits coordinates of unhit ships. 
+    \item The client only discovers ship bounding boxes when a vessel is officially sunk via \texttt{SUNK} or \texttt{WIN}.
+    \item In single-player mode, the AI's secret grid is transmitted to the client via \texttt{STATUS: 2} \textit{only after} the match enters \texttt{STATE\_GAME\_OVER}.
+\end{itemize}
+This establishes a mathematically sound, tamper-proof client-server gaming system.

@@ -1,0 +1,47 @@
+# LaTeX compilation and build artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.synctex
+*.nav
+*.snm
+*.vrb
+*.idx
+*.ind
+*.ilg
+*.bcf
+*.run.xml
+*.dvi
+*.xdv
+*.spl
+
+# Editor backup files
+*.bak
+*.bkp
+*.sav
+*~
+*.swp
+
+# Generated output PDFs
+main.pdf
+EEE3095S_project_FRHSCO001.pdf
+
+# Do NOT ignore source vector assets and figures
+!figures/*.pdf
+!figures/**/*.pdf
+!figures/*.png
+!figures/**/*.png
+
+# Do NOT ignore source vector assets and figures
+!figures/*.pdf
+!figures/**/*.pdf
+!figures/*.png
+!figures/**/*.png

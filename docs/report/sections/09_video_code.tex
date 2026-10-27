@@ -1,0 +1,32 @@
+\section{Video}
+\label{sec:video}
+
+\begin{guidance}[Video (required)]
+A short video of \textbf{your group} demonstrating the working STM32 game
+server: connect, legal moves, a rejected move, a win or draw, moves disabled
+after game over, a new game, the button and LED behaviour, and disconnect.
+Show the board and the screen. Check that the link works for someone who is
+not logged in as you.
+\end{guidance}
+
+The demonstration video is available at:
+\begin{center}
+\url{https://ssp.faurholm.stream/eee_video.mp4}
+\end{center}
+The recording demonstrates the STM32F051R8 Discovery board and the PyQt6 client operating in real time: serial handshake negotiation, interactive fleet placement, valid hits and misses with auditory and visual feedback, rejection of out-of-turn and repeat coordinates, hardware 5-LED dynamic health bar tracking on PB3--PB7, board push-button hardware interrupts for immediate game reset, a complete win sequence with opponent fleet coordinate reveal, and graceful post-game disconnect.
+
+\section{Code}
+\label{sec:code}
+
+\begin{guidance}[Code (required)]
+Link to the GitHub repository with the STM32CubeIDE project, the GUI, the test
+harness, and a README with setup, build, flash, run and test instructions.
+Before you submit, clone it into a clean folder and follow your own README
+(brief, p.~5). Make sure the repository is accessible to the markers.
+\end{guidance}
+
+The complete project source code is available on GitHub at:
+\begin{center}
+\url{https://github.com/frhsco001/EEE3095S-Project}
+\end{center}
+The repository contains the complete STM32CubeIDE embedded C project (under \texttt{server/}), the PyQt6 desktop client and automated pytest test harness (under \texttt{client/}), and the complete documentation and report source files, complete with comprehensive setup, compilation, flashing, and verification instructions in the root and component \texttt{README.md} files.
